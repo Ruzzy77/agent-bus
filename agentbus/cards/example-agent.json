@@ -1,0 +1,26 @@
+{
+  "$comment": "로컬 대시보드용 예시 카드. 이 파일을 프로젝트의 ./agent-cards/로 복사해 에이전트별로 채운다.",
+  "protocolVersion": "1.0-lite",
+  "idShort": "example",
+  "name": "Example Agent",
+  "description": "이 에이전트가 맡는 역할 한 줄.",
+  "semanticId": "urn:agent-bus:agent-card",
+  "url": "file://.agent-bus",
+  "capabilities": {
+    "streaming": false,
+    "stateTransport": "file-bus"
+  },
+  "skills": [
+    {
+      "id": "example-skill",
+      "name": "능력 이름",
+      "description": "이 에이전트가 할 수 있는 일.",
+      "inputModes": ["text", "file-ref"],
+      "outputModes": ["text"]
+    }
+  ],
+  "submodelElements": [
+    { "idShort": "role", "valueType": "xs:string", "value": "역할 키워드" },
+    { "idShort": "authority", "valueType": "xs:string", "value": "권한 범위" }
+  ]
+}

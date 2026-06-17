@@ -1,0 +1,1 @@
+KaTeX 0.17.0 (woff2-only), vendored 2026-06-14

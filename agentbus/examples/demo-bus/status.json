@@ -1,0 +1,19 @@
+{
+  "agents": {
+    "claude": {
+      "heartbeat": 1781655100.0,
+      "note": "waiting for next request",
+      "state": "waiting",
+      "task": "t-demo-ops",
+      "updated_at": "2026-06-17T00:11:40.000+00:00"
+    },
+    "codex": {
+      "heartbeat": 1781655200.0,
+      "note": "runner docs and demo bus polish",
+      "state": "running",
+      "task": "t-demo-review",
+      "updated_at": "2026-06-17T00:13:20.000+00:00"
+    }
+  },
+  "created_at": "2026-06-17T00:00:00.000+00:00"
+}

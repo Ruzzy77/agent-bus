@@ -1,0 +1,13 @@
+# 런타임 버스 상태
+.agent-bus/
+.agentbus-bus/
+
+# Python 빌드/캐시
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.DS_Store

@@ -1,0 +1,16 @@
+{
+  "assetId": "urn:example:asset:line-7-press-2",
+  "timestamp": "2026-06-15T00:00:00Z",
+  "line": "line-7",
+  "station": "press-2",
+  "measurements": {
+    "temperatureC": 68.4,
+    "vibrationMmS": 2.1,
+    "cycleTimeMs": 812
+  },
+  "workOrder": {
+    "id": "wo-1042",
+    "material": "aluminum-sheet",
+    "quantity": 1200
+  }
+}

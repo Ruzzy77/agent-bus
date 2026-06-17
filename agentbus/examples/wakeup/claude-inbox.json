@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "wakeup-profile.v1",
+  "name": "claude-inbox",
+  "mode": "inbox",
+  "agent": "claude",
+  "kinds": ["request", "report", "note"],
+  "intervalSeconds": 30,
+  "maxSeconds": 1500,
+  "markDelivered": true,
+  "allowSensitive": false
+}

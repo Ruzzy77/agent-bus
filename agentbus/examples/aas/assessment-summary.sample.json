@@ -1,0 +1,43 @@
+{
+  "individualAssessments": [
+    {
+      "participant": "reviewer-a",
+      "summary": "Pressure trend exceeds the review threshold.",
+      "evidenceReferences": ["sensor:pressure:2026-06-16T01:00:00Z"],
+      "confidence": "medium"
+    },
+    {
+      "participant": "reviewer-b",
+      "summary": "Recent maintenance note may explain part of the change.",
+      "evidenceReferences": ["maintenance:work-order-17"],
+      "confidence": "low"
+    }
+  ],
+  "consensus": [
+    "The pressure trend needs operator review before the next run."
+  ],
+  "disagreements": [
+    {
+      "topic": "Root cause",
+      "positions": [
+        {"participant": "reviewer-a", "statement": "Process drift is plausible."},
+        {"participant": "reviewer-b", "statement": "Maintenance effects remain plausible."}
+      ]
+    }
+  ],
+  "partialEvidence": [
+    "Pressure data is present, but temperature data is not included."
+  ],
+  "uniqueFindings": [
+    {
+      "participant": "reviewer-b",
+      "finding": "Maintenance work-order timing overlaps with the trend change."
+    }
+  ],
+  "blindSpots": [
+    "No downstream quality measurement is attached."
+  ],
+  "decisionsNeeded": [
+    "Decide whether to pause the next run or collect one more measurement cycle."
+  ]
+}

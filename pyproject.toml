@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-bus"
+version = "0.1.0"
+description = "Portable file-based message/status/task bus and localhost dashboard for agent collaboration."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ruzzy77" }]
+keywords = ["agents", "coordination", "message-bus", "dashboard", "llm", "stdlib"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development",
+]
+dependencies = []
+
+[project.scripts]
+agentbus = "agentbus.bus:main"
+agentbus-dashboard = "agentbus.dashboard:main"
+
+[tool.setuptools]
+packages = ["agentbus"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+agentbus = [
+  "cards/*.json",
+  "cards/*.md",
+  "skills/*/*.md",
+  "schemas/*.md",
+  "examples/adapters/*",
+  "examples/demo-bus/*",
+  "examples/aas/*.json",
+  "examples/smoke/*.sh",
+  "examples/wakeup/*.json",
+  "static/*",
+  "vendor/katex/*",
+  "vendor/katex/fonts/*",
+]
