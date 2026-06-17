@@ -63,7 +63,7 @@ system = os.environ.get(
 )
 instruction = os.environ.get(
     "OPENAI_COMPAT_INSTRUCTION",
-    "Read this JSON payload. Preserve important evidence, disagreements, blind spots, and decisions needed.",
+    "Read this JSON payload. Preserve important evidence, disagreements, evidence gaps, and decisions needed.",
 )
 request_body = {
     "model": model,

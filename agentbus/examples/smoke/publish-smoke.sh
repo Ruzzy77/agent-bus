@@ -205,7 +205,7 @@ assert "assessmentSummary" in text
 assert "individualAssessments" in text
 assert "participants" in text
 assert "statement" in text
-assert "blindSpots" in text
+assert "evidenceGaps" in text
 PY
 cat > "$TMP/bad-assessment-summary.json" <<'JSON'
 {"consensus": ["unattributed agreement"]}
@@ -377,21 +377,6 @@ assert summary["processed"][0]["messageId"] == msg_id
 assert any(row.get("reply_to") == msg_id and row.get("body") == "agent command completed " + msg_id for row in messages)
 assert any(row.get("task_id") == task_id and row.get("state") == "completed" for row in tasks)
 assert any(row.get("agent") == "my-agent" and row.get("id") == msg_id for row in acks)
-PY
-ab assess --task "$RUN_TASK" > "$TMP/assess.txt"
-grep -q "$RUN_TASK" "$TMP/assess.txt"
-grep -q "my-agent" "$TMP/assess.txt"
-ab assess --task "$RUN_TASK" --json > "$TMP/assess.json"
-"$PYTHON" - "$TMP/assess.json" "$RUN_TASK" <<'PY'
-import json, sys
-rows = json.load(open(sys.argv[1]))
-assert rows[0]["task_id"] == sys.argv[2]
-assert rows[0]["expected"] == ["my-agent"]
-assert rows[0]["reporters"] == ["my-agent"]
-assert rows[0]["blind_spots"] == []
-assert rows[0]["unexpected_reporters"] == []
-assert any(item["source"] == "task.assign" for item in rows[0]["expected_sources"])
-assert any(item["source"] == "request.to" for item in rows[0]["expected_sources"])
 PY
 cat > "$TMP/agent-fail.py" <<'PY'
 import sys
@@ -753,11 +738,11 @@ curl -fsS "http://127.0.0.1:$PORT/api/state" > "$TMP/dashboard-state.json"
 "$PYTHON" - "$TMP/dashboard-state.json" <<'PY'
 import json, sys
 state = json.load(open(sys.argv[1]))
-assert "assessments" in state
-for row in state["assessments"]:
-    assert "expected" in row
-    assert "expected_sources" in row
-    assert "unexpected_reporters" in row
+assert "task_reports" in state
+for row in state["task_reports"]:
+    assert "task_id" in row
+    assert "reports" in row
+    assert "report_count" in row
 PY
 curl -fsS "http://127.0.0.1:$PORT/.well-known/agent-card.json?agent=example" > "$TMP/well-known-card.json"
 ab a2a-card-check --file "$TMP/well-known-card.json" >/dev/null

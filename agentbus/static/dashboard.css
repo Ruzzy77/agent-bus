@@ -408,14 +408,14 @@
                display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .todo.hl { background:rgba(0,113,227,.10); box-shadow:inset 0 0 0 1px var(--accent); }
   /* 완료 */
-  #assessments { display:flex; flex-direction:column; gap:8px; }
-  .assessment { padding:9px 10px; border:1px solid var(--hair); border-radius:10px; background:var(--card); cursor:pointer;
+  #completed { display:flex; flex-direction:column; gap:8px; }
+  .completed-card { padding:9px 10px; border:1px solid var(--hair); border-radius:10px; background:var(--card); cursor:pointer;
                 transition:background .15s ease,border-color .15s ease,box-shadow .15s ease; }
-  .assessment:hover { background:var(--hover); }
-  .assessment.on { background:rgba(0,113,227,.10); box-shadow:inset 0 0 0 1px var(--accent); }
-  .assess-head { display:flex; align-items:flex-start; gap:7px; min-width:0; }
-  .assess-title { min-width:0; white-space:normal; overflow-wrap:anywhere; line-height:1.35; font-size:12.5px; color:var(--ink); }
-  .assess-meta { margin-top:8px; font-size:11px; line-height:1.45; color:var(--dim);
+  .completed-card:hover { background:var(--hover); }
+  .completed-card.on { background:rgba(0,113,227,.10); box-shadow:inset 0 0 0 1px var(--accent); }
+  .summary-head { display:flex; align-items:flex-start; gap:7px; min-width:0; }
+  .summary-title { min-width:0; white-space:normal; overflow-wrap:anywhere; line-height:1.35; font-size:12.5px; color:var(--ink); }
+  .summary-meta { margin-top:8px; font-size:11px; line-height:1.45; color:var(--dim);
                  display:flex; align-items:center; gap:6px; flex-wrap:wrap; overflow-wrap:anywhere; }
   /* 작업 행 컨트롤 */
   .todo-actions { position:absolute; right:6px; top:3px;

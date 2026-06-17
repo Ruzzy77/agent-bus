@@ -2,7 +2,7 @@
 
 `a2a-rpc.v1` is the A2A-facing projection of raw bus messages. It creates and checks A2A 1.0 `SendMessage` JSON-RPC request bodies, sends them with stdlib HTTP, and can record responses back to the raw bus.
 
-It does not provide public hosting, OAuth, streaming, task polling, or push delivery.
+Public hosting, OAuth, streaming, task polling, and push delivery stay in the surrounding A2A integration layer.
 
 ## Local commands
 
@@ -28,7 +28,7 @@ agentbus a2a-post --file request.json --endpoint https://example.com/a2a/rpc --t
 
 Structured JSON such as `assessment-packet.v1` stays in the same `SendMessage` request as a `data` part.
 
-`a2a-post` refuses `confidential` and `restricted` requests unless `--allow-sensitive` is set.
+`a2a-post` requires `--allow-sensitive` for `confidential` and `restricted` requests.
 
 ## HTTP defaults
 
@@ -43,14 +43,14 @@ Structured JSON such as `assessment-packet.v1` stays in the same `SendMessage` r
 
 ## Local inbound endpoints
 
-`agentbus serve` exposes local test endpoints on 127.0.0.1 only.
+`agentbus serve` exposes local test endpoints on 127.0.0.1 for development.
 
 | Path | Meaning |
 | --- | --- |
 | `/.well-known/agent-card.json?agent=<id>` | Project a local card as an A2A Agent Card. |
 | `/a2a/rpc` | Accept `SendMessage` and append it to the raw bus. |
 
-These endpoints are for local testing and dashboard integration. They are not a public A2A server.
+These endpoints support local testing and dashboard integration. Public A2A serving belongs to an external host.
 
 ## Minimum checks
 

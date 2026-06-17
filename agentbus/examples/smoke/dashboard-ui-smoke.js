@@ -155,7 +155,7 @@ assert(panelCtx.panelActions.join(',') === 'agents_less,agents_more,completed_le
 assert(panelCtx.panelHtml.includes('data-panel-toggle="agents_more"') && panelCtx.panelHtml.includes('에이전트 2개 더 보기') && panelCtx.panelHtml.includes('exp-caret down'), 'panel toggle render contract missing');
 assert(panelCtx.panelListMore === '<i>a</i><i>b</i><button type="button" class="todo-expand" data-panel-toggle="tasks_more">작업 1개 더 보기<span class="exp-caret down"></span></button>', 'panel list collapsed render contract missing');
 assert(panelCtx.panelListLess === '<i>a</i><i>b</i><i>c</i><button type="button" class="todo-expand" data-panel-toggle="tasks_less">접기<span class="exp-caret up"></span></button>', 'panel list expanded render contract missing');
-for (const oldToken of ['threadchip', 'todo-id', 'assess-task-id', 'beat.stale']) {
+for (const oldToken of ['threadchip', 'todo-id', 'beat.stale']) {
   assert(!src.includes(oldToken), `old dashboard token still present: ${oldToken}`);
 }
 
@@ -178,10 +178,10 @@ assert((msgActions.background || '').includes('transparent') && (msgActions['bac
 assert(!('border' in msgActions) && !('box-shadow' in msgActions), 'message action overlay should not use card chrome');
 assert(!dashboardCss.includes('.msg:focus-within .msg-actions'), 'message action overlay should not stick for whole-card focus');
 assert(cssRuleContaining('.msg:has(.msg-act:focus-visible) .msg-actions').includes('pointer-events:auto'), 'message action overlay focus rule missing');
-for (const selector of ['.msg.hlmsg', '.todo.hl', '.assessment.on', '.agent.on']) {
+for (const selector of ['.msg.hlmsg', '.todo.hl', '.completed-card.on', '.agent.on']) {
   assert((decls(cssBlock(selector))['box-shadow'] || '').includes('0 0 0 1px'), `${selector} should use thin highlight ring`);
 }
-for (const selector of ['.card', '.todo', '.assessment', '.agent']) {
+for (const selector of ['.card', '.todo', '.completed-card', '.agent']) {
   assert((decls(cssBlock(selector)).transition || '').includes('background'), `${selector} transition missing`);
 }
 for (const selector of ['.filter-pop', '.settings-pop', '.ackmore-pop', '.tdd-menu', '.mention-menu', '.dd-menu']) {

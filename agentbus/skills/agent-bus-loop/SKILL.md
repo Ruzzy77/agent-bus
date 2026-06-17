@@ -9,7 +9,7 @@ description: >-
 
 # agent-bus loop
 
-Start or resume the loop in the current agent thread. Treat agent-bus as a shared record that the agent uses, not as a process manager.
+Start or resume the loop in the current agent thread. Treat agent-bus as the shared coordination record used by the agent, with process ownership kept by the surrounding runtime.
 
 Use this skill as the entrypoint. For detailed inbox, ack, task-state, ticket, stop, input_required, event bridge, runner, and security rules, consult `agentbus workflow` or the `agent-bus-workflow` skill while running the loop.
 
@@ -35,7 +35,7 @@ agentbus status --agent <agent> --state running --note "joined"
 agentbus inbox --agent <agent>
 ```
 
-If `check-stop` exits 2, do not start new work. Report the stop request and set `status --state waiting` or `done` according to the platform context.
+If `check-stop` exits 2, enter the stop boundary. Report the stop request and set `status --state waiting` or `done` according to the platform context.
 
 ## Loop
 
@@ -44,10 +44,10 @@ At each work boundary:
 1. Run `agentbus check-stop`
 2. Update `status --state running` while working
 3. Read `agentbus inbox --agent <agent>`
-4. Handle only messages addressed to `<agent>`, `all`, or `*`
+4. Handle messages addressed to `<agent>`, `all`, or `*`
 5. Use `task-state` when a task id exists
 6. Send reports with `send --from <agent> --to <peer> --kind report`
-7. Ack only messages already handled
+7. Ack messages already handled
 8. Set `status --state waiting` before yielding control
 
 ```bash
@@ -60,20 +60,18 @@ agentbus status --agent <agent> --state waiting --task <task_id> --note "waiting
 
 ## Work intake
 
-Autonomous work is the default. Do not create tickets that add review fatigue, stop the loop, or interrupt safe forward progress.
-
-Do not turn every new work item into a ticket. If work can proceed without human acceptance, create or use a task and send a request to the target agent.
+Autonomous work is the default. Use direct tasks and request messages for work that can proceed on agent judgment, and reserve tickets for human-triage decisions.
 
 ```bash
 TASK_ID=$(agentbus task-new --title "short work title" --by <agent> --assign <peer>)
 agentbus send --from <agent> --to <peer> --kind request --subject "short work title" --body "work request" --task "$TASK_ID"
 ```
 
-Use a ticket only for a new proposal, a critical or risky change, or work that cannot safely proceed without human review. If a ticket is created, keep working on safe active tasks instead of waiting on that ticket.
+Use a ticket for a new proposal, a critical or risky change, or work that needs human review before execution. While a ticket waits for triage, continue safe active tasks.
 
 ## Stop or pause
 
-Stop means no new work. Finish only the smallest safe cleanup, then report and wait.
+A stop request puts the loop at a closure boundary. Finish the smallest safe cleanup, then report and wait.
 
 ```bash
 agentbus check-stop
@@ -88,7 +86,7 @@ agentbus task-state --id <task_id> --state input_required --by <agent> --note "d
 
 ## Loop closure report
 
-When closing a completed loop, do not send a chat-style summary as the final report. Send a polished termination report as the last bus `report` message, then close task/status records. Keep it suitable for dashboard reading and later audit.
+When closing a completed loop, the lead agent synthesizes peer reports, evidence refs, disagreements, verification, and remaining decisions into a polished termination report as the last bus `report` message, then closes task/status records. Keep it suitable for user alignment, user-facing follow-up, dashboard reading, the completed-work report filter, and later audit.
 
 Use this shape:
 
@@ -137,13 +135,13 @@ agentbus task-state --id <task_id> --state completed --by <agent> --note "closed
 agentbus status --agent <agent> --state done --task <task_id> --note "closed with termination report $MSG_ID"
 ```
 
-If no further loop work should start from this bus, write `agentbus stop` after the final report and include the final message id in `--detail`.
+To close the whole bus loop, run `agentbus stop --by <agent> --reason loop_closed --detail "termination report $MSG_ID"` after the final report. The dashboard then shows `루프 종료됨` in the top loop-state control while the final bus report remains the last message.
 
 ## Platform notes
 
 - Chat or app thread: treat `/agent-bus-loop`, "start loop", or "attach to agent-bus" as a request to run Start, then Loop while the thread is active
-- CLI runner: use this loop as the behavior inside the invoked agent, not as a background daemon unless the user asked for one
+- CLI runner: use this loop as the behavior inside the invoked agent; background daemon behavior is an explicit user-runner choice
 - External bridge: use `agentbus wakeup` or `watch-events`; keep adapter cursors separate from agent state
-- Sensitive work: respect `sensitivity` and `retention`; do not send `confidential` or `restricted` payloads to external tools unless explicitly allowed
+- Sensitive work: respect `sensitivity` and `retention`; external tools require explicit sensitive handling for `confidential` or `restricted` payloads
 
 For the full workflow, run `agentbus workflow` or use the `agent-bus-workflow` skill.

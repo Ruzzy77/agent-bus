@@ -21,13 +21,13 @@ agentbus wakeup --profile "$(agentbus examples wakeup/a2a-events.json)"
 | `--target` | Target filter. Events for `all` or `*` match every target. |
 | `--cursor-file` | Last processed event position. |
 | `--from-start` | Process existing events before waiting. |
-| `--dry-run` | Print events without running `--exec` or changing cursor state. |
+| `--dry-run` | Print events while leaving `--exec` and cursor state untouched. |
 | `--fail-log` | Append failed adapter calls as JSONL. |
 | `--exec` | Command that receives one event JSON object on stdin. |
 | `--exec-timeout` | Adapter timeout seconds; `0` disables it. |
 | `--allow-sensitive` | Allow `confidential` and `restricted` events to reach the adapter. |
 
-A successful event bridge exit advances the cursor. A failed exit leaves the cursor unchanged and can be retried. A blocked sensitive event advances the cursor, prints only a redacted notice, and records no event body in `--fail-log`.
+A successful event bridge exit advances the cursor. A failed exit leaves the cursor ready for retry. A sensitive-blocked event advances the cursor, prints a redacted notice, and withholds the event body from `--fail-log`.
 
 Check adapter state with:
 
@@ -36,7 +36,7 @@ agentbus adapter-status
 agentbus adapter-status --json
 ```
 
-`adapter-status` reports event bridge cursor and failure summaries from `<bus>/adapters/` without replaying event or payload bodies.
+`adapter-status` reports event bridge cursor and redacted failure summaries from `<bus>/adapters/`.
 
 ## Adapter input
 
@@ -54,12 +54,12 @@ A user-run agent runner command should accept one JSON object on stdin, write a 
 
 ## Sensitive data
 
-Adapters must treat `sensitivity` and `retention` as handling signals.
+Adapters treat `sensitivity` and `retention` as handling signals.
 
-- `confidential` and `restricted` events are blocked unless sensitive handling is explicitly allowed
-- Blocked events and wakeups print a redacted notice, not the payload body
+- `confidential` and `restricted` events require explicit sensitive handling
+- Sensitive-blocked events and wakeups print a redacted notice with the payload body withheld
 - `no_archive` messages stay in the active message log during `rotate`
-- External tokens should come from environment variables, not command history or bus messages
+- External tokens should come from environment variables rather than command history or bus messages
 
 ## A2A flow
 
@@ -70,7 +70,7 @@ Adapters must treat `sensitivity` and `retention` as handling signals.
 5. Send it with `agentbus a2a-post` or another HTTP adapter.
 6. Record the response when local agents need to continue from it.
 
-`agentbus/examples/adapters/a2a-outbound.sh` is the minimal `watch-events --exec` example. Use `agentbus examples wakeup/a2a-events.json` to locate the reusable wakeup profile for the same flow. `agentbus serve` also exposes local-only Agent Card and `SendMessage` test endpoints; it is not a public A2A server.
+`agentbus/examples/adapters/a2a-outbound.sh` is the minimal `watch-events --exec` example. Use `agentbus examples wakeup/a2a-events.json` to locate the reusable wakeup profile for the same flow. `agentbus serve` also exposes local Agent Card and `SendMessage` test endpoints for development; public A2A serving belongs to an external host.
 
 ## OpenAI-compatible HTTP flow
 
@@ -87,7 +87,7 @@ Adapters must treat `sensitivity` and `retention` as handling signals.
 | `OPENAI_COMPAT_EXTRA_JSON` | Optional JSON object merged into the request body. |
 | `AGENTBUS_CLI` | Optional command for recording responses, default `agentbus`. |
 
-The adapter blocks `confidential` and `restricted` payloads unless `AGENTBUS_ALLOW_SENSITIVE` is set. It prints a compact response summary and records the model response with `agentbus send` when `OPENAI_COMPAT_RESPONSE_TO` is set.
+The adapter requires `AGENTBUS_ALLOW_SENSITIVE` for `confidential` and `restricted` payloads. It prints a compact response summary and records the model response with `agentbus send` when `OPENAI_COMPAT_RESPONSE_TO` is set.
 
 ## Agent runner flow
 
@@ -120,7 +120,7 @@ The runner processes pending messages one at a time. For each successful command
 | `CODEX_RUNNER_EXTRA_ARGS` | Extra CLI args for `codex exec` mode. |
 | `CODEX_RUNNER_RESUME` | Optional CLI resume target: `last` or a session id. `CODEX_RUNNER_SANDBOX` and `CODEX_RUNNER_CWD` apply only to new CLI runs. |
 | `CODEX_RUNNER_TIMEOUT` | Optional CLI timeout seconds. `0` disables it. |
-| `CODEX_RUNNER_DRY_RUN` | Print prompt and packet summary without calling Codex. |
+| `CODEX_RUNNER_DRY_RUN` | Print prompt and packet summary while leaving Codex uncalled. |
 
 `cli` mode calls `codex exec` and uses the local Codex login. `sdk` mode imports `openai-codex` and uses the SDK thread API. Use `agentbus examples wakeup/codex-runner-inbox.json` for an inbox profile that wires `codex-runner.py` through `run-agent.sh`.
 
@@ -132,7 +132,7 @@ The runner processes pending messages one at a time. For each successful command
 | --- | --- |
 | `CLAUDE_RUNNER_MODE` | `cli`, `sdk`, `api`, or `auto`. Default: `cli`. |
 | `CLAUDE_RUNNER_CLI` | CLI command, default `claude`. |
-| `CLAUDE_RUNNER_MODEL` | Optional model. Required for `api` unless `ANTHROPIC_MODEL` is set. |
+| `CLAUDE_RUNNER_MODEL` | Optional model. `api` mode uses it, with `ANTHROPIC_MODEL` as fallback. |
 | `CLAUDE_RUNNER_CWD` | Optional working directory for CLI and SDK modes. |
 | `CLAUDE_RUNNER_PERMISSION_MODE` | Optional Claude permission mode, for example `plan`. |
 | `CLAUDE_RUNNER_MAX_TURNS` | Optional CLI max-turns value. |
@@ -147,9 +147,9 @@ The runner processes pending messages one at a time. For each successful command
 | `CLAUDE_RUNNER_EXTRA_ARGS` | Extra CLI args. |
 | `CLAUDE_RUNNER_EXTRA_JSON` | Optional JSON object merged into the Messages API request body. |
 | `CLAUDE_RUNNER_TIMEOUT` | Optional timeout seconds. `0` disables it. |
-| `CLAUDE_RUNNER_DRY_RUN` | Print prompt and packet summary without calling Claude. |
+| `CLAUDE_RUNNER_DRY_RUN` | Print prompt and packet summary while leaving Claude uncalled. |
 
-`cli` mode calls `claude -p` and sends the work packet on stdin. `sdk` mode imports `claude-agent-sdk` and uses `query()`. `api` mode uses the Messages API directly; it sends a prompt only and does not provide local file or shell tools unless the receiving service supplies them. Use `agentbus examples wakeup/claude-runner-inbox.json` for an inbox profile that wires `claude-runner.py` through `run-agent.sh`.
+`cli` mode calls `claude -p` and sends the work packet on stdin. `sdk` mode imports `claude-agent-sdk` and uses `query()`. `api` mode uses the Messages API directly; it sends a prompt and uses file or shell tools when the receiving service supplies them. Use `agentbus examples wakeup/claude-runner-inbox.json` for an inbox profile that wires `claude-runner.py` through `run-agent.sh`.
 
 ## AAS packet flow
 
@@ -166,5 +166,5 @@ Full AAS HTTP/REST API support and AASX export remain optional adapters with sep
 - Authentication: use token environment variables or operator-managed headers.
 - Payload: keep raw bus data and AAS-style data in one JSON request when both are needed.
 - Sensitive data: require explicit allow mode before external transfer.
-- Response: record a bus message or task state when local agents must continue from the result.
+- Response: record a bus message or task state when local agents continue from the result.
 - Failure: write event bridge cursor and failure logs under `<bus>/adapters/`, then inspect with `agentbus adapter-status`.

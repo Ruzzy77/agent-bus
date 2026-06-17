@@ -416,14 +416,14 @@ function renderTask(t) {
   </div>`;
 }
 
-function renderCompletedTask(t, a = {}) {
-  const reportCount = a.report_count || 0;
-  const latestReport = latestReportTime(a);
-  return `<div class="assessment ${filterTasks.has(t.task_id) ? "on" : ""}" data-task="${esc(t.task_id)}">
-    <div class="assess-head">
-      <span class="assess-title">${esc(t.title || a.title || "(제목 없음)")}</span>
+function renderCompletedTask(t, reportInfo = {}) {
+  const reportCount = reportInfo.report_count || 0;
+  const latestReport = latestReportTime(reportInfo);
+  return `<div class="completed-card ${filterTasks.has(t.task_id) ? "on" : ""}" data-task="${esc(t.task_id)}">
+    <div class="summary-head">
+      <span class="summary-title">${esc(t.title || reportInfo.title || "(제목 없음)")}</span>
     </div>
-    <div class="assess-meta">
+    <div class="summary-meta">
       ${idPill("task", t.task_id, {"data-task": t.task_id}, "idpill-compact")}
       <span>보고 ${esc(reportCount)}건</span>
       <span>${latestReport ? fmtTime(latestReport) : "-"}</span>
@@ -431,22 +431,22 @@ function renderCompletedTask(t, a = {}) {
   </div>`;
 }
 
-function latestReportTime(a = {}) {
-  const times = (a.reports || []).map(r => String(r.time || "")).filter(Boolean).sort();
+function latestReportTime(reportInfo = {}) {
+  const times = (reportInfo.reports || []).map(r => String(r.time || "")).filter(Boolean).sort();
   return times.length ? times[times.length - 1] : "";
 }
 
 function renderAgent(name, a) {
   const task = a.task ? idPill("task", a.task, {"data-task": a.task}, "agent-task") : "";
   return `<div class="agent ${filterAgents.has(name) ? "on" : ""}" data-agent="${esc(name)}" data-hb="${a.heartbeat || ""}">
-    <div class="assess-head agent-head">
-      <span class="assess-title agent-name">${esc(name)}</span>
+    <div class="summary-head agent-head">
+      <span class="summary-title agent-name">${esc(name)}</span>
       <span class="agent-status">
         <span class="state ${cls(a.state)}">${esc(AGENT_STATE_LABEL[a.state] || a.state)}</span>
         <span class="beat"><span class="age"></span></span>
       </span>
     </div>
-    ${task ? `<div class="assess-meta agent-meta">${task}</div>` : ""}
+    ${task ? `<div class="summary-meta agent-meta">${task}</div>` : ""}
     ${a.note ? `<div class="agent-note">${esc(a.note)}</div>` : ""}
     <div class="agent-actions">
       <button type="button" class="todo-del" data-tip="제거" aria-label="제거" data-delete-agent="${esc(name)}">${ICON_TRASH}</button>
@@ -722,16 +722,16 @@ function updateTaskPanel(tasks, now) {
   byId("clear-done").hidden = !tasks.some(t => t.state === "completed");
   updateTaskTimes(now);
 }
-function updateCompletedPanel(tasks, assessments) {
-  const assessmentByTask = new Map(assessments.map(a => [a.task_id, a]));
+function updateCompletedPanel(tasks, taskReports) {
+  const reportsByTask = new Map(taskReports.map(r => [r.task_id, r]));
   const completed = tasks.filter(t => t.state === "completed");
-  const assessSig = sig(completed, assessments, panelExpanded.completed, filterSig());
-  if (assessSig === sigAssess) return;
-  sigAssess = assessSig;
-  byId("assessments").innerHTML = renderPanelList(completed, {
+  const completedSig = sig(completed, taskReports, panelExpanded.completed, filterSig());
+  if (completedSig === sigAssess) return;
+  sigAssess = completedSig;
+  byId("completed").innerHTML = renderPanelList(completed, {
     expanded: panelExpanded.completed,
     limit: PANEL_LIMIT.completed,
-    renderItem: t => renderCompletedTask(t, assessmentByTask.get(t.task_id)),
+    renderItem: t => renderCompletedTask(t, reportsByTask.get(t.task_id)),
     emptyHtml: `<div class="todo muted todo-empty">완료 작업 없음</div>`,
     moreAction: "completed_more",
     lessAction: "completed_less",
@@ -786,8 +786,8 @@ async function refresh() {
   updateTicketPanel(byCreatedDesc(st.tickets || st.issues));
   const tasks = byCreatedDesc(st.tasks);
   updateTaskPanel(tasks, st.now);
-  const assessments = (st.assessments || []).slice();
-  updateCompletedPanel(tasks, assessments);
+  const taskReports = (st.task_reports || []).slice();
+  updateCompletedPanel(tasks, taskReports);
   updateAgentPanel(agents, st.now);
   updateComposeOptions(st.cards || {}, tasks);
 }
@@ -918,7 +918,7 @@ function buildFilterUI() {
 function syncFilterHighlights() {
   document.querySelectorAll("#tasks .idpill[data-task]").forEach(el =>
     el.classList.toggle("on", filterTasks.has(el.dataset.task)));
-  document.querySelectorAll("#assessments .assessment[data-task]").forEach(el =>
+  document.querySelectorAll("#completed .completed-card[data-task]").forEach(el =>
     el.classList.toggle("on", filterTasks.has(el.dataset.task)));
   document.querySelectorAll("#agents .agent[data-agent]").forEach(el =>
     el.classList.toggle("on", filterAgents.has(el.dataset.agent)));
@@ -966,9 +966,9 @@ byId("tasks").addEventListener("click", e => {
   const id = e.target.closest(".idpill[data-task]");
   if (id && id.dataset.task) { e.stopPropagation(); toggleInSet(filterTasks, id.dataset.task, id); }
 });
-byId("assessments").addEventListener("click", e => {
+byId("completed").addEventListener("click", e => {
   if (handlePanelToggle(e)) return;
-  const card = e.target.closest(".assessment");
+  const card = e.target.closest(".completed-card");
   if (card && card.dataset.task) { e.stopPropagation(); toggleInSet(filterTasks, card.dataset.task, card); }
 });
 byId("clear-done").addEventListener("click", clearDone);

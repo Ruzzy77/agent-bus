@@ -42,7 +42,7 @@
       "evidenceReferences": ["maintenance:work-order-17"]
     }
   ],
-  "blindSpots": [
+  "evidenceGaps": [
     "No downstream quality measurement is attached."
   ],
   "decisionsNeeded": [

@@ -1561,41 +1561,17 @@ def task_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _agent_name(value: Any) -> str:
-    return _clean_text(value)
-
-
-def task_assessment_rows(bus_dir: Path, task_id: str = "", include_all: bool = False, max_body_chars: int = 240) -> list[dict[str, Any]]:
+def task_report_rows(bus_dir: Path, task_id: str = "", max_body_chars: int = 240) -> list[dict[str, Any]]:
     tasks = fold_tasks(bus_dir)
     task_map = {str(t.get("task_id") or ""): t for t in tasks if t.get("task_id")}
     messages = live_messages(bus_dir)
     message_task_ids = {str(m.get("task_id") or "") for m in messages if m.get("task_id")}
-    if task_id:
-        task_ids = [task_id]
-    else:
-        task_ids = sorted(set(task_map) | message_task_ids)
+    task_ids = [task_id] if task_id else sorted(set(task_map) | message_task_ids)
     rows: list[dict[str, Any]] = []
     for tid in task_ids:
         task = task_map.get(tid, {"task_id": tid, "title": "", "assign": [], "state": ""})
         task_messages = [m for m in messages if str(m.get("task_id") or "") == tid]
         reports = [m for m in task_messages if m.get("kind") == "report"]
-        requests = [m for m in task_messages if m.get("kind") == "request"]
-        if not include_all and not task_id and not (reports or requests):
-            continue
-        expected: set[str] = set()
-        expected_sources: list[dict[str, str]] = []
-        for name in task.get("assign") or []:
-            agent = _agent_name(name)
-            if not agent:
-                continue
-            expected.add(agent)
-            expected_sources.append({"agent": agent, "source": "task.assign", "id": tid})
-        for request in requests:
-            to = _agent_name(request.get("to"))
-            if to and to not in {"all", "*", "user"}:
-                expected.add(to)
-                expected_sources.append({"agent": to, "source": "request.to", "id": str(request.get("id") or "")})
-        reporters = {_agent_name(report.get("from")) for report in reports if _agent_name(report.get("from"))}
         latest_activity = max(
             [str(item.get("time") or "") for item in task_messages] + [str(task.get("updated_at") or "")],
             default="",
@@ -1619,55 +1595,12 @@ def task_assessment_rows(bus_dir: Path, task_id: str = "", include_all: bool = F
             "title": task.get("title", ""),
             "state": task.get("state", ""),
             "assign": task.get("assign") or [],
-            "expected": sorted(expected),
-            "expected_sources": expected_sources,
-            "reporters": sorted(reporters),
-            "blind_spots": sorted(expected - reporters),
-            "unexpected_reporters": sorted(reporters - expected) if expected else [],
             "reports": report_rows,
             "latest_activity": latest_activity,
             "message_count": len(task_messages),
-            "request_count": len(requests),
             "report_count": len(reports),
         })
-    return sorted(rows, key=lambda row: (bool(row["blind_spots"]), row.get("latest_activity") or ""), reverse=True)
-
-
-def assess(args: argparse.Namespace) -> int:
-    ensure_bus(args.bus_dir)
-    rows = task_assessment_rows(args.bus_dir, args.task, args.all, args.max_body_chars)
-    if args.json:
-        print(json.dumps(rows, ensure_ascii=False, indent=2, sort_keys=True))
-        return 0
-    if not rows:
-        print("no assessment candidates")
-        return 0
-    for row in rows:
-        print(f"[{row['task_id']}] {row.get('state') or '-':14} {row.get('title') or ''}")
-        print(
-            "  expected={expected} reports={report_count} reporters={reporters} blind_spots={blind_spots}".format(
-                expected=",".join(row["expected"]) or "-",
-                report_count=row["report_count"],
-                reporters=",".join(row["reporters"]) or "-",
-                blind_spots=",".join(row["blind_spots"]) or "-",
-            )
-        )
-        if row["unexpected_reporters"]:
-            print(f"  unexpected_reporters={','.join(row['unexpected_reporters'])}")
-        if row["expected_sources"]:
-            sources = ", ".join(f"{s['agent']}:{s['source']}:{s['id']}" for s in row["expected_sources"])
-            print(f"  expected_sources={sources}")
-        for report in row["reports"]:
-            refs = " ".join(report.get("refs") or [])
-            thread = ""
-            if report.get("reply_to"):
-                thread = f" reply_to={report['reply_to']}"
-            print(f"  - [{report['id']}] {report.get('from')} report {report.get('subject','')}{thread}")
-            if refs:
-                print(f"    refs: {refs}")
-            if report.get("body"):
-                print(f"    {report['body']}")
-    return 0
+    return sorted(rows, key=lambda row: row.get("latest_activity") or "", reverse=True)
 
 
 def issue_new(args: argparse.Namespace) -> int:
@@ -2428,12 +2361,6 @@ def main() -> int:
     p.set_defaults(func=task_delete)
     p = sub.add_parser("task-list", help="현재 task 상태 (이벤트 접기)")
     p.set_defaults(func=task_list)
-    p = sub.add_parser("assess", help="task별 report와 blind spot 후보를 읽기 전용 요약")
-    p.add_argument("--task", default="", help="특정 task_id만 요약")
-    p.add_argument("--all", action="store_true", help="request/report 없는 task도 포함")
-    p.add_argument("--max-body-chars", type=int, default=240, help="report body 출력 길이. 0이면 전체")
-    p.add_argument("--json", action="store_true")
-    p.set_defaults(func=assess)
     add_ticket_parsers(sub)
     p = sub.add_parser("clear", help="메시지·ack·delivered 비우기 (--all: 작업·티켓·상태까지)")
     p.add_argument("--all", action="store_true", help="작업·티켓·상태·정지까지 초기화")

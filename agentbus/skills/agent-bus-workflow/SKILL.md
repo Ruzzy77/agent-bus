@@ -1,7 +1,7 @@
 ---
 name: agent-bus-workflow
 description: >-
-  Use this skill when Codex or another agent must collaborate with peers
+  Use this skill when Codex or another agent collaborates with peers
   through agent-bus: joining a bus, running the heartbeat and inbox loop, using
   task states, reporting input_required, handling stop.json, or writing a
   prompt/AGENTS.md section for agent-bus collaboration, including minimum
@@ -14,19 +14,19 @@ Start the loop in the active agent thread. Use `agentbus` as volatile coordinati
 
 ## Minimum requirements
 
-Use this workflow only when the agent can meet these requirements.
+Use this workflow with agents that meet these requirements.
 
 | Requirement | Reason |
 | --- | --- |
 | Run shell commands | The loop uses the `agentbus` CLI. |
 | Read and write the shared bus directory | Messages, acks, status, tasks, locks, and stop signals are files. |
 | Use a stable agent name | Status, inbox targeting, and acks key on `--agent <name>`. |
-| Access referenced project files | `--ref <path>` is useful only if the next agent can inspect the file. |
-| Return to the loop at work boundaries | Heartbeat is a status update, not a background daemon. |
+| Access referenced project files | `--ref <path>` is most useful when the next agent can inspect the file. |
+| Return to the loop at work boundaries | Heartbeat is a status update owned by the active thread or runner. |
 
-Do not use agent-bus as the primary coordination channel for an agent that cannot write the bus directory. Use chat handoff or a relay agent instead.
+Use agent-bus as the primary coordination channel when the agent can write the bus directory. For agents with read-only access, use chat handoff or a relay agent.
 
-Local network access is not required for CLI coordination. The dashboard is optional and binds to `127.0.0.1`.
+CLI coordination works through local files. The dashboard is optional and binds to `127.0.0.1`.
 
 ## Variables
 
@@ -47,7 +47,7 @@ agentbus check-stop
 agentbus status --agent <name> --state running --note "joined"
 ```
 
-If `check-stop` exits 2, do not start new work. Report the stop and set a terminal or waiting state.
+If `check-stop` exits 2, enter the stop boundary. Report the stop and set a terminal or waiting state.
 
 ## Loop
 
@@ -63,18 +63,18 @@ agentbus send --from <name> --to <peer> --kind report --subject "status" --body 
 agentbus status --agent <name> --state waiting --task <task_id> --note "waiting for next signal"
 ```
 
-Acknowledge only messages already read and handled. Use `--reply-to <message_id>`, `--task <task_id>`, and `--ref <path>` when they help the next reader.
+Acknowledge messages already read and handled. Use `--reply-to <message_id>`, `--task <task_id>`, and `--ref <path>` when they help the next reader.
 
 ## Sensitive data
 
 Treat `sensitivity` and `retention` as handling signals from the bus.
 
 - Read `sensitivity` before using web tools, remote SDKs, A2A endpoints, or external adapters.
-- Do not send `confidential` or `restricted` data outside the local bus unless the task or user explicitly permits it.
-- Use `--allow-sensitive` only for that explicit handoff.
+- Send `confidential` or `restricted` data outside the local bus with explicit task or user permission for that handoff.
+- Use `--allow-sensitive` for that explicit handoff.
 - Use `--retention no_archive` for NDA data that should stay out of message archives.
 - Run `agentbus security-check` when a bus may contain NDA or restricted data.
-- Blocked `watch-events` and `wakeup` output is a redacted notice unless sensitive handling is explicitly allowed.
+- Sensitive-blocked `watch-events` and `wakeup` output is a redacted notice; explicit sensitive handling releases the payload to the selected command/output.
 
 ## Tasks and states
 
@@ -82,11 +82,11 @@ Use task state for the work item.
 
 | State | Use |
 | --- | --- |
-| `submitted` | Work exists but has not started. |
+| `submitted` | Work is registered and ready for assignment or pickup. |
 | `working` | An agent is actively changing or checking it. |
 | `input_required` | User decision or missing external input blocks progress. |
 | `completed` | Requested work is done. |
-| `failed` | Work cannot complete under current constraints. |
+| `failed` | Current constraints prevent completion. |
 | `canceled` | Work was intentionally stopped. |
 
 Use agent status for the agent process.
@@ -94,8 +94,8 @@ Use agent status for the agent process.
 | State | Use |
 | --- | --- |
 | `running` | The agent is active. This is also the heartbeat. |
-| `waiting` | The agent is idle or blocked without active work. |
-| `done` | The agent has no remaining work. |
+| `waiting` | The agent is idle or waiting on an external signal. |
+| `done` | The agent has closed its assigned work. |
 | `error` | The agent hit an unresolved fault. |
 
 ## Input required
@@ -108,7 +108,7 @@ agentbus send --from <name> --to user --kind request --task <task_id> --subject 
 agentbus status --agent <name> --state waiting --task <task_id> --note "input_required"
 ```
 
-If a chat channel with the user exists, report the same decision point there once. Do not rely on dashboard state alone for user-blocking choices.
+If a chat channel with the user exists, report the same decision point there once so user-blocking choices appear both in chat and on the dashboard.
 
 ## Stop
 
@@ -124,13 +124,13 @@ If the user asks to stop in chat, write the stop signal.
 agentbus stop --by <name> --reason user_stop --detail "requested in chat"
 ```
 
-After a stop, finish only the safe boundary already in progress. Send a short report with changed files, unfinished work, and risk. Do not begin a new task.
+After a stop, finish the safe boundary already in progress. Send a short report with changed files, unfinished work, and risk, then wait.
 
 ## Reports
 
-Send reports that change coordination. Skip heartbeat-only chatter.
+Send reports that change coordination. Keep heartbeat chatter in status updates.
 
-Use this shape for final or blocking reports:
+Use this shape for final reports or reports that change a blocking decision:
 
 ```text
 Judgment: current decision.
@@ -143,7 +143,7 @@ Use `kind=request` for a decision needed from a peer or user. Use `kind=report` 
 
 ## Termination report
 
-A loop closure report is not a chat summary. When a loop is complete, the lead agent should write a polished termination report as the final bus `report` message, then close task/status records. The report must let a later reader trace decisions, outputs, expected behavior, verification, and remaining boundaries without reading the chat.
+When a loop is complete, the lead agent should synthesize peer reports, evidence refs, disagreements, verification, and remaining decisions into a polished termination report as the final bus `report` message, then close task/status records. The report should support user alignment and follow-up interaction, and let a later reader trace decisions, outputs, expected behavior, verification, and remaining boundaries from the dashboard or bus records.
 
 Required sections:
 
@@ -192,18 +192,18 @@ agentbus task-state --id <task_id> --state completed --by <name> --note "closed 
 agentbus status --agent <name> --state done --task <task_id> --note "closed with termination report $MSG_ID"
 ```
 
-If no agent should start new work from this bus, run `agentbus stop` after the final report and include the final message id in the stop detail. Do not send another report after this unless a user explicitly reopens the loop.
+To close the whole bus loop, run `agentbus stop --by <name> --reason loop_closed --detail "termination report $MSG_ID"` after the final report. The dashboard then shows `루프 종료됨` in the top loop-state control, and the final bus `report` remains the last message until a user explicitly reopens the loop.
 
 ## Ticket intake
 
-Autonomous work is the default. Do not use tickets as the default work queue, and do not create tickets that add review fatigue, stop the loop, or interrupt safe forward progress. For work that can proceed without human acceptance, create a task and send a request message directly.
+Autonomous work is the default. Use direct tasks and request messages for work that can proceed on agent judgment, and reserve tickets for human-triage decisions.
 
 ```bash
 TASK_ID=$(agentbus task-new --title "short work title" --by <name> --assign <peer>)
 agentbus send --from <name> --to <peer> --kind request --subject "short work title" --body "work request" --task "$TASK_ID"
 ```
 
-Use a ticket only for a new proposal, a critical or risky change, or work that cannot safely proceed until a human accepts it.
+Use a ticket for a new proposal, a critical or risky change, or work that needs human acceptance before execution.
 
 ```bash
 agentbus ticket-new --title "short candidate" --by <name> --body "why it matters" --ref path/to/file
@@ -212,11 +212,11 @@ agentbus ticket-accept --id <ticket_id> --by user --to <name>
 agentbus ticket-reject --id <ticket_id> --by user
 ```
 
-Do not add priority, category, or long planning fields. The human decision is only accept or reject. Accepting a ticket creates a task and sends a request message to the selected agent.
+Keep ticket fields minimal: title, body, refs, and assignee target are enough. The human decision is accept or reject. Accepting a ticket creates a task and sends a request message to the selected agent.
 
 ## Event bridges and agent runners
 
-Use `agentbus events`, `agentbus watch-events`, or `agentbus wakeup` when a user-run runtime must observe the bus. The event contract is `agentbus.event.v1`.
+Use `agentbus events`, `agentbus watch-events`, or `agentbus wakeup` when a user-run runtime observes the bus. The event contract is `agentbus.event.v1`.
 
 ```bash
 agentbus events --types ticket.* --jsonl
@@ -225,7 +225,7 @@ agentbus wakeup --profile "$(agentbus examples wakeup/<name>.json)" --once
 agentbus adapter-status
 ```
 
-`wakeup` reads a `wakeup-profile.v1` JSON file. Use `mode=inbox` for ack-based agent self-wake and `mode=events` for event bridges. The core bus does not start or resume agents by itself. Platform wakeups, webhooks, A2A, AAS (Asset Administration Shell), and SDK bridges should be user-run helpers that consume events or pending inbox data, keep a cursor when needed, and then reread the bus before acting. Sensitive payloads are blocked by default unless the profile allows them. Use `agentbus adapter-status` to inspect event bridge cursor and failure summaries without replaying payload bodies.
+`wakeup` reads a `wakeup-profile.v1` JSON file. Use `mode=inbox` for ack-based agent self-wake and `mode=events` for event bridges. The core bus records coordination state, while platform wakeups, webhooks, A2A, AAS (Asset Administration Shell), and SDK bridges are user-run helpers that consume events or pending inbox data, keep a cursor when needed, and then reread the bus before acting. Sensitive payloads require explicit profile permission. Use `agentbus adapter-status` to inspect event bridge cursor and redacted failure summaries.
 
 Use `agentbus examples adapters/openai-compatible.sh` when a checked payload should go to an OpenAI-compatible endpoint and the response should return as a bus message.
 Use `agentbus examples adapters/run-agent.sh` when an accepted ticket should become an inbox request processed by a user-run agent command, then close with report, task-state, and ack records.
@@ -242,7 +242,7 @@ You are codex.
 Bus directory: <bus_dir>
 
 Start by running check-stop, status, and inbox.
-Ack only handled messages, update task-state when a task id exists, and report with agentbus send.
+Ack handled messages, update task-state when a task id exists, and report with agentbus send.
 ```
 
 Codex CLI or SDK use is runner-based. The runner receives inbox work through `agentbus wakeup`, calls Codex, records the report, completes the task, and acks the handled message.
@@ -263,10 +263,10 @@ You are claude.
 Bus directory: <bus_dir>
 
 Start by running check-stop, status, and inbox.
-Ack only handled messages, update task-state when a task id exists, and report with agentbus send.
+Ack handled messages, update task-state when a task id exists, and report with agentbus send.
 ```
 
-Claude CLI, Agent SDK, or Messages API use is runner-based. The runner receives inbox work through `agentbus wakeup`, calls Claude, records the report, completes the task, and acks the handled message. API mode is prompt-only unless the receiving service provides a tool loop.
+Claude CLI, Agent SDK, or Messages API use is runner-based. The runner receives inbox work through `agentbus wakeup`, calls Claude, records the report, completes the task, and acks the handled message. API mode is prompt-only; file or shell tools come from the receiving service when provided.
 
 ```bash
 PROFILE=$(agentbus examples wakeup/claude-runner-inbox.json)
@@ -283,13 +283,13 @@ You are `<name>`. Coordinate through `agentbus`.
 
 - Set `AGENTBUS_BUS_DIR=<bus_dir>` before bus commands.
 - Start with `agentbus check-stop`, then set `status --state running`.
-- Read `agentbus inbox --agent <name>` and `ack` only handled messages.
-- Use `send --task`, `--reply-to`, and `--ref` for context that a peer must see.
-- Use direct `task-new` plus `send --kind request` for work that can proceed without human acceptance.
-- Do not create tickets that stop the loop or add routine review fatigue.
-- Use `ticket-new` only for proposals or critical work that needs human triage before it becomes a task.
+- Read `agentbus inbox --agent <name>` and `ack` handled messages.
+- Use `send --task`, `--reply-to`, and `--ref` for context that a peer needs.
+- Use direct `task-new` plus `send --kind request` for work that can proceed on agent judgment.
+- Reserve tickets for human-triage decisions so routine work keeps moving.
+- Use `ticket-new` for proposals or critical work that needs human triage before it becomes a task.
 - Use `task-state input_required` plus a `to user` request when user input blocks progress.
 - Treat `stop.json` or `check-stop` exit 2 as a cooperative stop.
-- Keep durable conclusions in project files, not in the bus.
+- Keep durable conclusions in project files, with bus records as provenance and coordination context.
 - Close a completed loop with a structured `# 종료 보고서` report, then mark the task completed and the agent done.
 ```

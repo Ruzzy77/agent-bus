@@ -30,7 +30,7 @@
 | `object` | Primary object touched by the event. |
 | `data` | Original source row. |
 
-`data` may include `sensitivity` and `retention`. External adapters must check those fields before webhooks, SDK wakeups, or protocol transfer.
+`data` may include `sensitivity` and `retention`. External adapters check those fields before webhooks, SDK wakeups, or protocol transfer.
 
 ## Event types
 
@@ -42,4 +42,4 @@
 
 ## Adapter rule
 
-The event is a wake signal, not authority. The adapter rereads the bus or referenced files before acting.
+The event is a wake signal. The adapter uses it as a prompt to reread the bus or referenced files before acting.

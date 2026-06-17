@@ -1,6 +1,6 @@
 # assessment-packet.v1
 
-`assessment-packet.v1` carries operational data and assessment records in one JSON document. It is AAS-shaped and does not claim full AAS conformance.
+`assessment-packet.v1` carries operational data and assessment records in one JSON document. It is AAS-shaped for local exchange, with full AAS conformance handled by the surrounding integration layer.
 
 The packet uses neutral external terms and avoids product names or project-coined terms.
 
@@ -27,29 +27,27 @@ The packet uses neutral external terms and avoids product names or project-coine
 | `idShort` | Content |
 | --- | --- |
 | `OperationalData` | Manufacturing, process, sensor, or work data supplied by `--data`. |
-| `AssessmentRecords` | Participants, assessment summary, communication records, and review items. |
+| `AssessmentRecords` | Agent participants, lead synthesis, communication records, and review items. |
 | `WorkItems` | Work item lifecycle state and assignment. |
 | `Traceability` | Asset id, data source, event cursors, and change events. |
 
 `OperationalData` and `AssessmentRecords` stay in the same packet when the receiver needs an auditable data-and-judgment bundle.
 
-`sensitivity` and `retention` are optional handling signals. Outbound adapters use them to block or allow external transfer.
+`sensitivity` and `retention` are optional handling signals. Outbound adapters use them to decide external transfer handling.
 
 ## Assessment summary
 
-`AssessmentRecords.assessmentSummary` is always present. It is empty unless `--assessment-summary <json>` is supplied.
-
-The summary is author-supplied. agent-bus preserves and projects it; it does not derive agreement from messages or decide consensus. Consensus entries therefore carry explicit provenance. `aas-packet` rejects bare string consensus entries, and `aas-packet-check` checks the projected AAS shape for the same minimum fields.
+`AssessmentRecords.assessmentSummary` is always present. Supplying `--assessment-summary <json>` fills it with a lead-agent synthesis built from bus reports, evidence references, disagreements, and remaining decisions. agent-bus preserves and projects that synthesis; the lead agent owns the final judgment, user alignment, user-facing report, and follow-up interaction. `aas-packet` accepts object-shaped consensus entries with required fields, and `aas-packet-check` checks the projected AAS shape for the same minimum fields.
 
 | Field | Content |
 | --- | --- |
 | `individualAssessments` | Per-participant objects with `participant`, `summary`, and optional evidence references. |
-| `consensus` | Author-supplied agreement objects with `statement`, non-empty `participants`, and optional evidence or communication references. |
+| `consensus` | Lead-synthesized agreement objects with `statement`, non-empty `participants`, and optional evidence or communication references. |
 | `disagreements` | Objects with `topic` and participant `positions` that affect the decision. |
-| `partialEvidence` | Evidence only some participants considered, or evidence with limited coverage. |
+| `partialEvidence` | Evidence that is useful but still limited, partial, or agent-specific. |
 | `uniqueFindings` | Objects with `finding` plus `participant` or `source`. |
-| `blindSpots` | Missing observations, tests, or fields. |
-| `decisionsNeeded` | Choices that need a human or next system action. |
+| `evidenceGaps` | Missing observations, tests, fields, or verification links that the lead must account for. |
+| `decisionsNeeded` | Choices the lead must resolve, ask the user about, or pass to the next workflow. |
 
 ## Field naming
 
@@ -74,4 +72,4 @@ agentbus aas-packet \
 agentbus aas-packet-check --file packet.json
 ```
 
-The check verifies the packet version, asset id, AAS environment shape, required submodels, assessment summary fields, and required record lists. It is not an AAS conformance test.
+The check verifies the packet version, asset id, AAS environment shape, required submodels, assessment summary fields, and required record lists. AAS conformance testing belongs to a dedicated AAS validator.

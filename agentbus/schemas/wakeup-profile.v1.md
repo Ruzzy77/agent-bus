@@ -28,16 +28,16 @@
 | `mode` | `inbox` or `events`. |
 | `command` | Optional shell command. It receives one JSON object on stdin. |
 | `intervalSeconds` | Poll interval for loop mode. |
-| `maxSeconds` | Maximum run time. `0` means no limit. |
+| `maxSeconds` | Maximum run time. `0` means unlimited. |
 | `execTimeout` | Command timeout seconds. `0` disables it. |
 | `allowSensitive` | Allows `confidential` and `restricted` payloads to reach stdout and `command`. |
-| `requiredEnv` | Environment variable names that must be set before the profile runs. |
+| `requiredEnv` | Environment variable names expected before the profile runs. |
 | `cursorFile` | Adapter cursor path. Relative paths are under the bus directory. |
 | `failLog` | Adapter failure JSONL path. Relative paths are under the bus directory. |
 
 Default state paths are `<bus>/adapters/<name>.cursor` and `<bus>/adapters/<name>.failures.jsonl`.
 
-Profiles do not store secrets. Put tokens in environment variables and list the names in `requiredEnv`.
+Profiles reference secret names. Put tokens in environment variables and list the names in `requiredEnv`.
 
 ## Inbox mode
 
@@ -58,7 +58,7 @@ Profiles do not store secrets. Put tokens in environment variables and list the 
 | `kinds` | Message kinds to wake on. Default is `request`. |
 | `markDelivered` | Write `delivered.jsonl` after a successful wake command. Ack remains the receiving agent's responsibility. |
 
-`inbox` mode checks `stop.json` before each poll. If pending messages exist, it prints the pending JSON, sends the same JSON to `command` when set, and exits. Sensitive pending data prints only a redacted notice unless sensitive handling is explicitly allowed.
+`inbox` mode checks `stop.json` before each poll. If pending messages exist, it prints the pending JSON, sends the same JSON to `command` when set, and exits. Sensitive pending data requires explicit sensitive handling; otherwise the output is a redacted notice.
 
 ## Events mode
 
@@ -82,7 +82,7 @@ Profiles do not store secrets. Put tokens in environment variables and list the 
 | `fromStart` | Process existing events before waiting. |
 | `execTimeout` | Command timeout seconds. `0` disables it. |
 
-`events` mode keeps the `watch-events` contract: a successful command advances the cursor, a failed command leaves the cursor unchanged, and a blocked sensitive event advances the cursor without printing or logging the event body.
+`events` mode keeps the `watch-events` contract: a successful command advances the cursor, a failed command leaves the cursor ready for retry, and a sensitive-blocked event advances the cursor while withholding the event body from output and logs.
 
 ## Commands
 

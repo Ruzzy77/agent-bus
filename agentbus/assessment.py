@@ -18,7 +18,7 @@ ASSESSMENT_ID_SHORTS = (
     "disagreements",
     "partialEvidence",
     "uniqueFindings",
-    "blindSpots",
+    "evidenceGaps",
     "decisionsNeeded",
     "communicationRecords",
     "reviewItems",
@@ -31,7 +31,7 @@ ASSESSMENT_SUMMARY_KEYS = (
     "disagreements",
     "partialEvidence",
     "uniqueFindings",
-    "blindSpots",
+    "evidenceGaps",
     "decisionsNeeded",
 )
 SUMMARY_REFERENCE_KEYS = ("evidenceReferences", "communicationIds", "workItemIds")
