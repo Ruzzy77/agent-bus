@@ -141,6 +141,59 @@ Next: smallest useful next action.
 
 Use `kind=request` for a decision needed from a peer or user. Use `kind=report` for completed work or a changed risk.
 
+## Termination report
+
+A loop closure report is not a chat summary. When a loop is complete, the lead agent should write a polished termination report as the final bus `report` message, then close task/status records. The report must let a later reader trace decisions, outputs, expected behavior, verification, and remaining boundaries without reading the chat.
+
+Required sections:
+
+```markdown
+# 종료 보고서
+
+## 종료 판정
+- 상태:
+- 종료 사유:
+- 최종 책임 에이전트:
+
+## 작업 범위
+- 포함:
+- 제외:
+
+## 의사결정 기록
+| 판단 출처 | 검토 내용 | 반영 판단 | 반영 산출물 |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
+## 산출물
+| 산출물 | 경로 또는 식별자 | 기대 동작 |
+| --- | --- | --- |
+|  |  |  |
+
+## 검증
+| 검증 | 결과 | 근거 |
+| --- | --- | --- |
+|  |  |  |
+
+## 미반영 항목과 남은 위험
+-
+
+## 운영 상태
+- 최종 report message:
+- task state:
+- agent status:
+- stop signal:
+```
+
+Closure order:
+
+```bash
+MSG_ID=$(agentbus send --from <name> --to user --kind report --subject "종료 보고서: <scope>" --body "$(cat report.md)" --task <task_id>)
+agentbus task-state --id <task_id> --state completed --by <name> --note "closed with termination report $MSG_ID"
+agentbus status --agent <name> --state done --task <task_id> --note "closed with termination report $MSG_ID"
+```
+
+If no agent should start new work from this bus, run `agentbus stop` after the final report and include the final message id in the stop detail. Do not send another report after this unless a user explicitly reopens the loop.
+
 ## Ticket intake
 
 Autonomous work is the default. Do not use tickets as the default work queue, and do not create tickets that add review fatigue, stop the loop, or interrupt safe forward progress. For work that can proceed without human acceptance, create a task and send a request message directly.
@@ -238,4 +291,5 @@ You are `<name>`. Coordinate through `agentbus`.
 - Use `task-state input_required` plus a `to user` request when user input blocks progress.
 - Treat `stop.json` or `check-stop` exit 2 as a cooperative stop.
 - Keep durable conclusions in project files, not in the bus.
+- Close a completed loop with a structured `# 종료 보고서` report, then mark the task completed and the agent done.
 ```

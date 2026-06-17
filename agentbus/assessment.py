@@ -34,6 +34,7 @@ ASSESSMENT_SUMMARY_KEYS = (
     "blindSpots",
     "decisionsNeeded",
 )
+SUMMARY_REFERENCE_KEYS = ("evidenceReferences", "communicationIds", "workItemIds")
 
 
 def _id_short(value: object, default: str = "Item") -> str:
@@ -167,6 +168,77 @@ def _summary_list(value: Any, key: str) -> list[Any]:
     raise ValueError(f"assessmentSummary.{key} must be a list")
 
 
+def _has_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _has_text_item(value: Any) -> bool:
+    return isinstance(value, list) and bool(value) and all(_has_text(item) for item in value)
+
+
+def _require_summary_object(value: Any, path: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} must be a JSON object")
+    return value
+
+
+def _require_text_field(row: dict[str, Any], path: str, field: str) -> None:
+    if not _has_text(row.get(field)):
+        raise ValueError(f"{path}.{field} must be a non-empty string")
+
+
+def _require_text_list_field(row: dict[str, Any], path: str, field: str) -> None:
+    if not _has_text_item(row.get(field)):
+        raise ValueError(f"{path}.{field} must be a non-empty list of strings")
+
+
+def _validate_reference_lists(row: dict[str, Any], path: str) -> None:
+    for field in SUMMARY_REFERENCE_KEYS:
+        value = row.get(field)
+        if value is not None and not isinstance(value, list):
+            raise ValueError(f"{path}.{field} must be a list")
+
+
+def _validate_assessment_summary_source(summary: dict[str, list[Any]]) -> None:
+    """Validate source summary claims before projecting them into AAS shape."""
+    for i, item in enumerate(summary["individualAssessments"]):
+        path = f"assessmentSummary.individualAssessments[{i}]"
+        row = _require_summary_object(item, path)
+        _require_text_field(row, path, "participant")
+        _require_text_field(row, path, "summary")
+        _validate_reference_lists(row, path)
+
+    for i, item in enumerate(summary["consensus"]):
+        path = f"assessmentSummary.consensus[{i}]"
+        row = _require_summary_object(item, path)
+        _require_text_field(row, path, "statement")
+        _require_text_list_field(row, path, "participants")
+        _validate_reference_lists(row, path)
+
+    for i, item in enumerate(summary["disagreements"]):
+        path = f"assessmentSummary.disagreements[{i}]"
+        row = _require_summary_object(item, path)
+        _require_text_field(row, path, "topic")
+        positions = row.get("positions")
+        if not isinstance(positions, list) or not positions:
+            raise ValueError(f"{path}.positions must be a non-empty list")
+        _validate_reference_lists(row, path)
+        for j, position in enumerate(positions):
+            position_path = f"{path}.positions[{j}]"
+            position_row = _require_summary_object(position, position_path)
+            _require_text_field(position_row, position_path, "participant")
+            _require_text_field(position_row, position_path, "statement")
+            _validate_reference_lists(position_row, position_path)
+
+    for i, item in enumerate(summary["uniqueFindings"]):
+        path = f"assessmentSummary.uniqueFindings[{i}]"
+        row = _require_summary_object(item, path)
+        _require_text_field(row, path, "finding")
+        if not (_has_text(row.get("participant")) or _has_text(row.get("source"))):
+            raise ValueError(f"{path} must include participant or source")
+        _validate_reference_lists(row, path)
+
+
 def normalize_assessment_summary(value: Any = None) -> dict[str, list[Any]]:
     if value in (None, ""):
         source: dict[str, Any] = {}
@@ -174,7 +246,9 @@ def normalize_assessment_summary(value: Any = None) -> dict[str, list[Any]]:
         source = value
     else:
         raise ValueError("assessmentSummary must be a JSON object")
-    return {key: _summary_list(source.get(key), key) for key in ASSESSMENT_SUMMARY_KEYS}
+    summary = {key: _summary_list(source.get(key), key) for key in ASSESSMENT_SUMMARY_KEYS}
+    _validate_assessment_summary_source(summary)
+    return summary
 
 
 def _participant_records(bus_dir: Path) -> list[dict[str, Any]]:
@@ -292,6 +366,66 @@ def _json_id_shorts(value: Any) -> set[str]:
     return id_shorts
 
 
+def _aas_child(element: dict[str, Any], id_short: str) -> dict[str, Any] | None:
+    value = element.get("value")
+    if not isinstance(value, list):
+        return None
+    for child in value:
+        if isinstance(child, dict) and child.get("idShort") == id_short:
+            return child
+    return None
+
+
+def _aas_child_text(element: dict[str, Any], id_short: str) -> bool:
+    child = _aas_child(element, id_short)
+    return isinstance(child, dict) and _has_text(child.get("value"))
+
+
+def _aas_child_nonempty_list(element: dict[str, Any], id_short: str) -> bool:
+    child = _aas_child(element, id_short)
+    return isinstance(child, dict) and isinstance(child.get("value"), list) and bool(child["value"])
+
+
+def _assessment_summary_elements(packet: dict[str, Any]) -> list[dict[str, Any]]:
+    env = packet.get("aasEnvironment")
+    submodels = env.get("submodels") if isinstance(env, dict) else None
+    if not isinstance(submodels, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for submodel in submodels:
+        if not isinstance(submodel, dict) or submodel.get("idShort") != "AssessmentRecords":
+            continue
+        for element in submodel.get("submodelElements") or []:
+            if not isinstance(element, dict) or element.get("idShort") != "Records":
+                continue
+            summary = _aas_child(element, "assessmentSummary")
+            if isinstance(summary, dict):
+                out.append(summary)
+    return out
+
+
+def _validate_aas_consensus(summary_elements: list[dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    for summary in summary_elements:
+        consensus = _aas_child(summary, "consensus")
+        if not isinstance(consensus, dict):
+            errors.append("assessmentSummary.consensus required")
+            continue
+        items = consensus.get("value")
+        if not isinstance(items, list):
+            errors.append("assessmentSummary.consensus must be a list")
+            continue
+        for i, item in enumerate(items):
+            if not isinstance(item, dict) or item.get("modelType") != "SubmodelElementCollection":
+                errors.append(f"assessmentSummary.consensus[{i}] must be a collection with statement and participants")
+                continue
+            if not _aas_child_text(item, "statement"):
+                errors.append(f"assessmentSummary.consensus[{i}].statement required")
+            if not _aas_child_nonempty_list(item, "participants"):
+                errors.append(f"assessmentSummary.consensus[{i}].participants required")
+    return errors
+
+
 def validate_assessment_packet(packet: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(packet, dict):
@@ -320,4 +454,8 @@ def validate_assessment_packet(packet: Any) -> list[str]:
     for name in ASSESSMENT_ID_SHORTS:
         if name not in id_shorts:
             errors.append(f"missing field idShort: {name}")
+    summary_elements = _assessment_summary_elements(packet)
+    if not summary_elements and "AssessmentRecords" in present:
+        errors.append("AssessmentRecords.assessmentSummary required")
+    errors.extend(_validate_aas_consensus(summary_elements))
     return errors

@@ -238,9 +238,18 @@ def write_json(path: Path, value: Any) -> None:
     tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         tmp.write_text(text, encoding="utf-8")
+        _chmod_private(tmp)
         os.replace(tmp, path)
+        _chmod_private(path)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def _chmod_private(path: Path) -> None:
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
 
 
 @contextmanager
@@ -278,6 +287,7 @@ def _append_jsonl_unlocked(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n")
+    _chmod_private(path)
 
 
 def append_jsonl(path: Path, value: Any) -> None:
@@ -981,6 +991,7 @@ def _write_cursor(path: Path | None, cursor: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(path):
         path.write_text(cursor + "\n", encoding="utf-8")
+        _chmod_private(path)
 
 
 def _append_event_failure(
@@ -1550,6 +1561,115 @@ def task_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _agent_name(value: Any) -> str:
+    return _clean_text(value)
+
+
+def task_assessment_rows(bus_dir: Path, task_id: str = "", include_all: bool = False, max_body_chars: int = 240) -> list[dict[str, Any]]:
+    tasks = fold_tasks(bus_dir)
+    task_map = {str(t.get("task_id") or ""): t for t in tasks if t.get("task_id")}
+    messages = live_messages(bus_dir)
+    message_task_ids = {str(m.get("task_id") or "") for m in messages if m.get("task_id")}
+    if task_id:
+        task_ids = [task_id]
+    else:
+        task_ids = sorted(set(task_map) | message_task_ids)
+    rows: list[dict[str, Any]] = []
+    for tid in task_ids:
+        task = task_map.get(tid, {"task_id": tid, "title": "", "assign": [], "state": ""})
+        task_messages = [m for m in messages if str(m.get("task_id") or "") == tid]
+        reports = [m for m in task_messages if m.get("kind") == "report"]
+        requests = [m for m in task_messages if m.get("kind") == "request"]
+        if not include_all and not task_id and not (reports or requests):
+            continue
+        expected: set[str] = set()
+        expected_sources: list[dict[str, str]] = []
+        for name in task.get("assign") or []:
+            agent = _agent_name(name)
+            if not agent:
+                continue
+            expected.add(agent)
+            expected_sources.append({"agent": agent, "source": "task.assign", "id": tid})
+        for request in requests:
+            to = _agent_name(request.get("to"))
+            if to and to not in {"all", "*", "user"}:
+                expected.add(to)
+                expected_sources.append({"agent": to, "source": "request.to", "id": str(request.get("id") or "")})
+        reporters = {_agent_name(report.get("from")) for report in reports if _agent_name(report.get("from"))}
+        latest_activity = max(
+            [str(item.get("time") or "") for item in task_messages] + [str(task.get("updated_at") or "")],
+            default="",
+        )
+        report_rows = []
+        for report in reports:
+            body = str(report.get("body") or "")
+            if max_body_chars > 0 and len(body) > max_body_chars:
+                body = body[:max_body_chars].rstrip() + "…"
+            report_rows.append({
+                "id": report.get("id", ""),
+                "time": report.get("time", ""),
+                "from": report.get("from", ""),
+                "subject": report.get("subject", ""),
+                "reply_to": report.get("reply_to", ""),
+                "refs": report.get("refs") or [],
+                "body": body,
+            })
+        rows.append({
+            "task_id": tid,
+            "title": task.get("title", ""),
+            "state": task.get("state", ""),
+            "assign": task.get("assign") or [],
+            "expected": sorted(expected),
+            "expected_sources": expected_sources,
+            "reporters": sorted(reporters),
+            "blind_spots": sorted(expected - reporters),
+            "unexpected_reporters": sorted(reporters - expected) if expected else [],
+            "reports": report_rows,
+            "latest_activity": latest_activity,
+            "message_count": len(task_messages),
+            "request_count": len(requests),
+            "report_count": len(reports),
+        })
+    return sorted(rows, key=lambda row: (bool(row["blind_spots"]), row.get("latest_activity") or ""), reverse=True)
+
+
+def assess(args: argparse.Namespace) -> int:
+    ensure_bus(args.bus_dir)
+    rows = task_assessment_rows(args.bus_dir, args.task, args.all, args.max_body_chars)
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    if not rows:
+        print("no assessment candidates")
+        return 0
+    for row in rows:
+        print(f"[{row['task_id']}] {row.get('state') or '-':14} {row.get('title') or ''}")
+        print(
+            "  expected={expected} reports={report_count} reporters={reporters} blind_spots={blind_spots}".format(
+                expected=",".join(row["expected"]) or "-",
+                report_count=row["report_count"],
+                reporters=",".join(row["reporters"]) or "-",
+                blind_spots=",".join(row["blind_spots"]) or "-",
+            )
+        )
+        if row["unexpected_reporters"]:
+            print(f"  unexpected_reporters={','.join(row['unexpected_reporters'])}")
+        if row["expected_sources"]:
+            sources = ", ".join(f"{s['agent']}:{s['source']}:{s['id']}" for s in row["expected_sources"])
+            print(f"  expected_sources={sources}")
+        for report in row["reports"]:
+            refs = " ".join(report.get("refs") or [])
+            thread = ""
+            if report.get("reply_to"):
+                thread = f" reply_to={report['reply_to']}"
+            print(f"  - [{report['id']}] {report.get('from')} report {report.get('subject','')}{thread}")
+            if refs:
+                print(f"    refs: {refs}")
+            if report.get("body"):
+                print(f"    {report['body']}")
+    return 0
+
+
 def issue_new(args: argparse.Namespace) -> int:
     iid = create_issue(args.bus_dir, args.title, args.by, args.body, args.ref or [], args.sensitivity, args.retention)
     print(iid)
@@ -1595,6 +1715,35 @@ def issue_reject(args: argparse.Namespace) -> int:
     return 0
 
 
+def _security_file_mode_warnings(bus_dir: Path) -> list[Path]:
+    ps = paths(bus_dir)
+    candidates = [path for path in ps.values() if path.exists() and path.is_file()]
+    archive = bus_dir / "archive"
+    if archive.is_dir():
+        candidates.extend(path for path in archive.rglob("*.jsonl") if path.is_file())
+    adapters = bus_dir / "adapters"
+    if adapters.is_dir():
+        candidates.extend(path for path in adapters.rglob("*.jsonl") if path.is_file())
+    out: list[Path] = []
+    for path in sorted(set(candidates), key=lambda p: str(p)):
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            continue
+        if mode & 0o077:
+            out.append(path)
+    return out
+
+
+def _format_path_examples(paths_in: list[Path], limit: int = 3) -> str:
+    if not paths_in:
+        return "none"
+    examples = ", ".join(str(path) for path in paths_in[:limit])
+    if len(paths_in) > limit:
+        examples += f", +{len(paths_in) - limit} more"
+    return examples
+
+
 def security_check(args: argparse.Namespace) -> int:
     ensure_bus(args.bus_dir)
     mode = args.bus_dir.stat().st_mode & 0o777
@@ -1605,11 +1754,17 @@ def security_check(args: argparse.Namespace) -> int:
     sensitive_tasks = [t for t in tasks if effective_sensitivity(t) in SENSITIVE_LEVELS]
     sensitive_issues = [i for i in issues if effective_sensitivity(i) in SENSITIVE_LEVELS]
     no_archive = [m for m in messages if effective_retention(m) == "no_archive"]
+    loose_files = _security_file_mode_warnings(args.bus_dir)
     checks = [
         {
             "status": "warn" if mode & 0o077 else "ok",
             "name": "bus_dir_permissions",
             "detail": f"{args.bus_dir} mode {mode:03o}",
+        },
+        {
+            "status": "warn" if loose_files else "ok",
+            "name": "bus_file_permissions",
+            "detail": f"group/other bits on {len(loose_files)} files: {_format_path_examples(loose_files)}",
         },
         {
             "status": "warn" if sensitive_messages or sensitive_tasks or sensitive_issues else "ok",
@@ -1712,6 +1867,7 @@ def clear_bus(bus_dir: Path, all_: bool = False) -> None:
         p.parent.mkdir(parents=True, exist_ok=True)
         with file_lock(p):
             p.write_text("", encoding="utf-8")
+            _chmod_private(p)
     if all_:
         with file_lock(ps["status"]):
             write_json(ps["status"], {"created_at": now_iso(), "agents": {}})
@@ -1743,13 +1899,19 @@ def _rotate_log_unlocked(bus_dir: Path, key: str, path: Path) -> Path | None:
         if not archive_lines:
             return None
         dest.write_text("\n".join(archive_lines) + "\n", encoding="utf-8")
+        _chmod_private(dest)
         path.write_text(("\n".join(retained_lines) + "\n") if retained_lines else "", encoding="utf-8")
+        _chmod_private(path)
     else:
         os.replace(path, dest)
+        _chmod_private(dest)
         path.write_text("", encoding="utf-8")
+        _chmod_private(path)
     if key == "messages":
         if not path.read_text(encoding="utf-8").strip():
-            paths(bus_dir)["message_deletes"].write_text("", encoding="utf-8")
+            deletes = paths(bus_dir)["message_deletes"]
+            deletes.write_text("", encoding="utf-8")
+            _chmod_private(deletes)
     _prune_archives(archive_dir, key)
     return dest
 
@@ -1961,6 +2123,33 @@ def a2a_rpc_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _credential_header_names(headers: dict[str, str]) -> list[str]:
+    exact = {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "x-api-key",
+        "api-key",
+        "apikey",
+    }
+    out: list[str] = []
+    for name in headers:
+        normalized = name.strip().lower().replace("_", "-")
+        if (
+            normalized in exact
+            or "authorization" in normalized
+            or "api-key" in normalized
+            or "apikey" in normalized
+            or normalized == "auth"
+            or normalized.endswith("-auth")
+            or "token" in normalized
+            or "secret" in normalized
+            or "credential" in normalized
+        ):
+            out.append(name)
+    return sorted(out)
+
+
 def a2a_post(args: argparse.Namespace) -> int:
     from . import a2a
 
@@ -1968,11 +2157,22 @@ def a2a_post(args: argparse.Namespace) -> int:
         request_body = _load_operational_data(args.file)
         if payload_is_sensitive(request_body) and not (args.allow_sensitive or allow_sensitive_env()):
             raise ValueError(f"sensitive request blocked; rerun with --allow-sensitive ({sensitive_summary(request_body)})")
+        endpoint = _required_text(args.endpoint, "endpoint")
+        insecure_http = endpoint.lower().startswith("http://")
+        bearer_token = a2a.read_token(args.bearer_token, args.token_env)
+        headers = a2a.header_pairs(args.header)
+        credential_headers = _credential_header_names(headers)
+        if insecure_http and bearer_token and not args.allow_insecure:
+            raise ValueError("bearer token over http blocked; use https or rerun with --allow-insecure")
+        if insecure_http and credential_headers and not args.allow_insecure:
+            raise ValueError(f"credential header over http blocked ({', '.join(credential_headers)}); use https or rerun with --allow-insecure")
+        if insecure_http and payload_is_sensitive(request_body) and not args.allow_insecure:
+            raise ValueError("sensitive request over http blocked; use https or rerun with --allow-insecure")
         result = a2a.post_rpc(
             request_body,
-            args.endpoint,
-            a2a.read_token(args.bearer_token, args.token_env),
-            a2a.header_pairs(args.header),
+            endpoint,
+            bearer_token,
+            headers,
             args.timeout,
         )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
@@ -1996,7 +2196,7 @@ def a2a_post(args: argparse.Namespace) -> int:
     if not result.get("ok"):
         failure = {
             "time": now_iso(),
-            "endpoint": args.endpoint,
+            "endpoint": endpoint,
             "requestId": request_body.get("id") if isinstance(request_body, dict) else "",
             "status": result.get("status"),
             "error": result.get("error"),
@@ -2228,6 +2428,12 @@ def main() -> int:
     p.set_defaults(func=task_delete)
     p = sub.add_parser("task-list", help="현재 task 상태 (이벤트 접기)")
     p.set_defaults(func=task_list)
+    p = sub.add_parser("assess", help="task별 report와 blind spot 후보를 읽기 전용 요약")
+    p.add_argument("--task", default="", help="특정 task_id만 요약")
+    p.add_argument("--all", action="store_true", help="request/report 없는 task도 포함")
+    p.add_argument("--max-body-chars", type=int, default=240, help="report body 출력 길이. 0이면 전체")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=assess)
     add_ticket_parsers(sub)
     p = sub.add_parser("clear", help="메시지·ack·delivered 비우기 (--all: 작업·티켓·상태까지)")
     p.add_argument("--all", action="store_true", help="작업·티켓·상태·정지까지 초기화")
@@ -2287,15 +2493,16 @@ def main() -> int:
     p.add_argument("--header", action="append", help="추가 HTTP header. 예: 'X-Trace: 1'")
     p.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout seconds")
     p.add_argument("--allow-sensitive", action="store_true", help="민감 request 외부 전송 허용")
+    p.add_argument("--allow-insecure", action="store_true", help="http endpoint로 token/sensitive request 전송 허용")
     p.add_argument("--fail-log", type=Path, default=None, help="실패 JSONL 기록")
     p.add_argument("--out", type=Path, default=None, help="응답 body 저장 파일")
     p.add_argument("--record-response-to", default="", help="응답을 bus 메시지로 받을 에이전트")
     p.add_argument("--response-from", default="a2a", help="응답 기록 메시지의 sender")
     p.set_defaults(func=a2a_post)
-    p = sub.add_parser("workflow", help="에이전트 협업 워크플로(SKILL.md) 출력")
+    p = sub.add_parser("workflow", help="에이전트 협업 워크플로와 종료 보고서 template 출력")
     p.add_argument("--path", action="store_true", help="패키지에 포함된 SKILL.md 경로만 출력")
     p.set_defaults(func=workflow)
-    p = sub.add_parser("loop", help="에이전트 루프 엔트리(SKILL.md) 출력")
+    p = sub.add_parser("loop", help="에이전트 루프 엔트리와 종료 보고 안내 출력")
     p.add_argument("--path", action="store_true", help="패키지에 포함된 SKILL.md 경로만 출력")
     p.set_defaults(func=loop)
     p = sub.add_parser("examples", help="패키지 예제 목록 또는 경로 출력")

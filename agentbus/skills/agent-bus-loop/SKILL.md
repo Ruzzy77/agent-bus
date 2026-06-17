@@ -86,6 +86,59 @@ Use `input_required` when progress needs a user decision rather than more agent 
 agentbus task-state --id <task_id> --state input_required --by <agent> --note "decision needed"
 ```
 
+## Loop closure report
+
+When closing a completed loop, do not send a chat-style summary as the final report. Send a polished termination report as the last bus `report` message, then close task/status records. Keep it suitable for dashboard reading and later audit.
+
+Use this shape:
+
+```markdown
+# 종료 보고서
+
+## 종료 판정
+- 상태:
+- 종료 사유:
+- 최종 책임 에이전트:
+
+## 작업 범위
+- 포함:
+- 제외:
+
+## 의사결정 기록
+| 판단 출처 | 검토 내용 | 반영 판단 | 반영 산출물 |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
+## 산출물
+| 산출물 | 경로 또는 식별자 | 기대 동작 |
+| --- | --- | --- |
+|  |  |  |
+
+## 검증
+| 검증 | 결과 | 근거 |
+| --- | --- | --- |
+|  |  |  |
+
+## 미반영 항목과 남은 위험
+-
+
+## 운영 상태
+- 최종 report message:
+- task state:
+- agent status:
+- stop signal:
+```
+
+Close in this order so the termination report remains the last message:
+
+```bash
+MSG_ID=$(agentbus send --from <agent> --to user --kind report --subject "종료 보고서: <scope>" --body "$(cat report.md)" --task <task_id>)
+agentbus task-state --id <task_id> --state completed --by <agent> --note "closed with termination report $MSG_ID"
+agentbus status --agent <agent> --state done --task <task_id> --note "closed with termination report $MSG_ID"
+```
+
+If no further loop work should start from this bus, write `agentbus stop` after the final report and include the final message id in `--detail`.
+
 ## Platform notes
 
 - Chat or app thread: treat `/agent-bus-loop`, "start loop", or "attach to agent-bus" as a request to run Start, then Loop while the thread is active

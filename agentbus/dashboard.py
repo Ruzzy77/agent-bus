@@ -208,6 +208,7 @@ class Handler(BaseHTTPRequestHandler):
                 "status": agent_bus.load_json(ps["status"], {"agents": {}}),
                 "stop": agent_bus.load_json(ps["stop"], None) if ps["stop"].exists() else None,
                 "tasks": agent_bus.fold_tasks(self.bus_dir),
+                "assessments": agent_bus.task_assessment_rows(self.bus_dir, max_body_chars=160),
                 "tickets": agent_bus.fold_issues(self.bus_dir),
                 "issues": agent_bus.fold_issues(self.bus_dir),
                 "cards": agent_bus.load_cards(CARDS_DIR),

@@ -11,22 +11,32 @@
   <h1>Agent-Bus</h1>
   <span class="project" id="project"></span>
   <span class="muted" id="refreshed"></span>
-  <button class="iconbtn" id="toggleside" title="작업·에이전트 패널" aria-label="작업·에이전트 패널">
+  <button class="loopstate" id="loopstate" type="button" aria-expanded="false" data-tip="루프 상태 패널 열기">루프 열림</button>
+  <button class="iconbtn" id="toggleside" data-tip="사이드 패널" aria-label="사이드 패널">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><line x1="15" y1="4.5" x2="15" y2="19.5"/></svg>
   </button>
-  <button class="iconbtn" id="togglecompose" title="메시지 보내기" aria-label="메시지 보내기">
+  <button class="iconbtn" id="togglecompose" data-tip="메시지 보내기" aria-label="메시지 보내기">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.3a8 8 0 0 1-8.6 8 8.7 8.7 0 0 1-3.6-.8L3.5 20l1.5-4.8a8 8 0 0 1-.8-3.6 8 8 0 0 1 8-7.6 8 8 0 0 1 8.3 7.3z"/></svg>
   </button>
   <div class="settings-wrap" id="settings-wrap">
-    <button class="iconbtn" id="settingsbtn" title="설정" aria-label="설정">
+    <button class="iconbtn" id="settingsbtn" data-tip="설정" aria-label="설정">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
     </button>
     <div class="settings-pop" id="settings-pop">
       <div class="set-sec">테마</div>
       <div class="set-row" id="theme-row">
-        <button type="button" class="set-opt" data-theme="">시스템</button>
-        <button type="button" class="set-opt" data-theme="light">라이트</button>
-        <button type="button" class="set-opt" data-theme="dark">다크</button>
+        <button type="button" class="set-opt" data-theme="" aria-label="시스템 테마">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M9 20h6M12 16v4"/></svg>
+          <span class="set-label">시스템</span>
+        </button>
+        <button type="button" class="set-opt" data-theme="light" aria-label="라이트 테마">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.1M12 19.1v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/></svg>
+          <span class="set-label">라이트</span>
+        </button>
+        <button type="button" class="set-opt" data-theme="dark" aria-label="다크 테마">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A7.6 7.6 0 0 1 9.8 4a8.1 8.1 0 1 0 10.2 10.2z"/></svg>
+          <span class="set-label">다크</span>
+        </button>
       </div>
       <div class="set-sec">텍스트 크기</div>
       <div class="set-size">
@@ -34,13 +44,17 @@
         <input type="range" class="set-slider" id="size-slider" min="0" max="4" step="1" value="1" aria-label="텍스트 크기">
         <span class="set-size-a lg">A</span>
       </div>
-      <div class="set-sec">세션</div>
-      <button class="set-btn" id="rotatebtn" type="button">메시지 보관</button>
-      <button class="set-btn" id="clearbtn" type="button">메시지 비우기</button>
-      <button class="set-stop" id="stopbtn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2h8L20.8 8v8L16 20.8H8L3.2 16V8z"/><line x1="9.2" y1="9.2" x2="14.8" y2="14.8"/><line x1="14.8" y1="9.2" x2="9.2" y2="14.8"/></svg>
-        정지 요청
-      </button>
+      <div class="set-sec">세션 메시지</div>
+      <div class="set-actions">
+        <button class="set-action" id="rotatebtn" type="button" aria-label="메시지 보관">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16l-1.4 12H5.4L4 7z"/><path d="M8 7V4h8v3"/><path d="M9 12h6"/></svg>
+          <span class="set-label">보관</span>
+        </button>
+        <button class="set-action danger" id="clearbtn" type="button" aria-label="메시지 비우기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
+          <span class="set-label">비우기</span>
+        </button>
+      </div>
     </div>
   </div>
 </header>
@@ -48,27 +62,27 @@
 <form id="compose">
   <div class="inner">
     <div class="row1">
-      <div class="dd" id="dd-to">
-        <button type="button" class="dd-btn"><span class="dd-val">all</span><span class="dd-caret"></span></button>
-        <div class="dd-menu"></div>
-      </div>
       <div class="seg" id="seg-kind">
         <button type="button" data-v="note" class="on">note</button>
         <button type="button" data-v="request">request</button>
         <button type="button" data-v="report">report</button>
       </div>
+      <div class="dd" id="dd-to">
+        <button type="button" class="dd-btn"><span class="dd-val">all</span><span class="dd-caret"></span></button>
+        <div class="dd-menu"></div>
+      </div>
       <div class="dd" id="dd-task">
         <button type="button" class="dd-btn"><span class="dd-val placeholder">작업 선택</span><span class="dd-caret"></span></button>
         <div class="dd-menu"></div>
       </div>
-      <button class="iconbtn" type="button" id="closecompose" title="닫기" aria-label="닫기">✕</button>
+      <button class="iconbtn" type="button" id="closecompose" data-tip="닫기" aria-label="닫기">✕</button>
     </div>
     <div class="row2">
       <div class="body-wrap">
         <textarea id="body" rows="1" placeholder="메시지 입력 · @로 파일 첨부 · ⌘/Ctrl+Enter 전송"></textarea>
         <div class="mention-menu" id="mention"></div>
       </div>
-      <button class="iconbtn send" type="submit" title="보내기" aria-label="보내기">
+      <button class="iconbtn send" type="submit" data-tip="보내기" aria-label="보내기">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10.5 13.5"/><path d="M21 3l-6.5 18-4-8-8-4z"/></svg>
       </button>
     </div>
@@ -83,20 +97,29 @@
       <span class="filter-summary" id="filter-summary"></span>
       <div class="search-wrap" id="search-wrap">
         <input class="search-in" id="search-in" type="text" placeholder="메시지 검색…">
-        <button class="iconbtn sm" id="searchbtn" title="검색" aria-label="검색">
+        <button class="iconbtn sm" id="searchbtn" data-tip="검색" aria-label="검색">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.4-3.4"/></svg>
         </button>
       </div>
       <div class="filter-wrap" id="filter-wrap">
-        <button class="iconbtn sm" id="filterbtn" title="필터" aria-label="필터">
+        <button class="iconbtn sm" id="filterbtn" data-tip="필터" aria-label="필터">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h18l-7 8v5l-4-2.2v-2.8z"/></svg>
         </button>
         <div class="filter-pop" id="filter-pop">
+          <div class="fp-head">
+            <span class="fp-head-title">필터</span>
+            <button class="linkbtn fp-clear" id="fp-reset" type="button">필터 해제</button>
+          </div>
+          <div class="fp-sec">종류</div>
+          <div class="seg filter-kind" id="fp-kinds">
+            <button type="button" data-kind="note">note</button>
+            <button type="button" data-kind="report">report</button>
+            <button type="button" data-kind="request">request</button>
+          </div>
           <div class="fp-sec">참여자</div>
           <div class="fp-list" id="fp-agents"></div>
           <div class="fp-sec">작업</div>
           <div class="fp-list" id="fp-tasks"></div>
-          <button class="fp-reset" id="fp-reset" type="button">필터 초기화</button>
         </div>
       </div>
     </div>
@@ -106,14 +129,14 @@
     <section>
       <div class="panel-title">티켓
         <span class="pt-actions">
-          <button class="iconbtn sm" id="newticket" title="새 티켓" aria-label="새 티켓">
+          <button class="iconbtn sm" id="newticket" data-tip="새 티켓" aria-label="새 티켓">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </span>
       </div>
-      <form id="newticket-form" class="newtask-form" hidden>
+      <form id="newticket-form" class="newtask-form" aria-hidden="true">
         <input id="newticket-title" placeholder="검토할 티켓 한 줄 · Enter 추가" autocomplete="off">
-        <button class="iconbtn primary" type="submit" title="추가" aria-label="추가">
+        <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
         </button>
       </form>
@@ -123,18 +146,22 @@
       <div class="panel-title">작업
         <span class="pt-actions">
           <button class="linkbtn" id="clear-done" type="button" hidden>완료 지우기</button>
-          <button class="iconbtn sm" id="newtask" title="새 작업" aria-label="새 작업">
+          <button class="iconbtn sm" id="newtask" data-tip="새 작업" aria-label="새 작업">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </span>
       </div>
-      <form id="newtask-form" class="newtask-form" hidden>
+      <form id="newtask-form" class="newtask-form" aria-hidden="true">
         <input id="newtask-title" placeholder="작업 제목 입력 · Enter 추가" autocomplete="off">
-        <button class="iconbtn primary" type="submit" title="추가" aria-label="추가">
+        <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
         </button>
       </form>
       <div id="tasks"></div>
+    </section>
+    <section>
+      <div class="panel-title">완료</div>
+      <div id="assessments"></div>
     </section>
     <section>
       <div class="panel-title">에이전트</div>

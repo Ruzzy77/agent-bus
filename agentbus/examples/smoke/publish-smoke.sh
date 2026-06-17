@@ -26,14 +26,18 @@ ab() { "$PYTHON" -m agentbus "$@"; }
 "$PYTHON" -m py_compile agentbus/*.py agentbus/examples/adapters/codex-runner.py agentbus/examples/adapters/claude-runner.py
 if command -v node >/dev/null 2>&1; then
   node --check agentbus/static/dashboard.js >/dev/null
+  node --check agentbus/examples/smoke/dashboard-ui-smoke.js >/dev/null
+  node agentbus/examples/smoke/dashboard-ui-smoke.js
 fi
 sh -n agentbus/examples/adapters/a2a-outbound.sh agentbus/examples/adapters/wake-shell.sh agentbus/examples/adapters/openai-compatible.sh agentbus/examples/adapters/run-agent.sh
 
 ab loop | grep -q '^# agent-bus loop$'
+ab loop | grep -q 'Loop closure report'
 LOOP_SKILL=$(ab loop --path)
 [ -f "$LOOP_SKILL" ]
 grep -q 'agent-bus-workflow' "$LOOP_SKILL"
 ab workflow | grep -q '^# agent-bus workflow$'
+ab workflow | grep -q 'Termination report'
 WORKFLOW_SKILL=$(ab workflow --path)
 [ -f "$WORKFLOW_SKILL" ]
 
@@ -199,8 +203,73 @@ packet = json.load(open(sys.argv[1]))
 text = json.dumps(packet, ensure_ascii=False)
 assert "assessmentSummary" in text
 assert "individualAssessments" in text
+assert "participants" in text
+assert "statement" in text
 assert "blindSpots" in text
 PY
+cat > "$TMP/bad-assessment-summary.json" <<'JSON'
+{"consensus": ["unattributed agreement"]}
+JSON
+if ab aas-packet \
+  --data agentbus/examples/aas/operational-data.sample.json \
+  --asset-id urn:example:asset:line-7-press-2 \
+  --assessment-summary "$TMP/bad-assessment-summary.json" \
+  --out "$TMP/bad-packet.json" 2>"$TMP/bad-summary.err"; then
+  echo "expected bare consensus summary to be rejected" >&2
+  exit 1
+fi
+grep -F "assessmentSummary.consensus[0] must be a JSON object" "$TMP/bad-summary.err" >/dev/null
+cat > "$TMP/bad-assessment-participants.json" <<'JSON'
+{"consensus": [{"statement": "mixed participant list", "participants": ["reviewer-a", 7]}]}
+JSON
+if ab aas-packet \
+  --data agentbus/examples/aas/operational-data.sample.json \
+  --asset-id urn:example:asset:line-7-press-2 \
+  --assessment-summary "$TMP/bad-assessment-participants.json" \
+  --out "$TMP/bad-participants-packet.json" 2>"$TMP/bad-participants.err"; then
+  echo "expected mixed consensus participant list to be rejected" >&2
+  exit 1
+fi
+grep -F "assessmentSummary.consensus[0].participants must be a non-empty list of strings" "$TMP/bad-participants.err" >/dev/null
+"$PYTHON" - "$TMP/packet.json" "$TMP/bad-projected-packet.json" <<'PY'
+import json, sys
+packet = json.load(open(sys.argv[1]))
+
+def walk(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
+
+for row in walk(packet):
+    if row.get("idShort") == "consensus":
+        row["value"] = [{
+            "modelType": "Property",
+            "idShort": "Item1",
+            "valueType": "xs:string",
+            "value": "unattributed agreement",
+        }]
+        break
+else:
+    raise SystemExit("consensus element not found")
+json.dump(packet, open(sys.argv[2], "w"), ensure_ascii=False)
+PY
+if ab aas-packet-check --file "$TMP/bad-projected-packet.json" 2>"$TMP/bad-projected.err"; then
+  echo "expected projected bare consensus to be rejected" >&2
+  exit 1
+fi
+grep -F "assessmentSummary.consensus[0] must be a collection with statement and participants" "$TMP/bad-projected.err" >/dev/null
+cat > "$TMP/operational-consensus-field.json" <<'JSON'
+{"consensus": "operational field name, not an assessment summary"}
+JSON
+ab aas-packet \
+  --data "$TMP/operational-consensus-field.json" \
+  --asset-id urn:example:asset:line-7-press-2 \
+  --out "$TMP/operational-consensus-packet.json"
+ab aas-packet-check --file "$TMP/operational-consensus-packet.json" >/dev/null
 
 cat > "$TMP/model_server.py" <<'PY'
 import json, sys
@@ -309,6 +378,21 @@ assert any(row.get("reply_to") == msg_id and row.get("body") == "agent command c
 assert any(row.get("task_id") == task_id and row.get("state") == "completed" for row in tasks)
 assert any(row.get("agent") == "my-agent" and row.get("id") == msg_id for row in acks)
 PY
+ab assess --task "$RUN_TASK" > "$TMP/assess.txt"
+grep -q "$RUN_TASK" "$TMP/assess.txt"
+grep -q "my-agent" "$TMP/assess.txt"
+ab assess --task "$RUN_TASK" --json > "$TMP/assess.json"
+"$PYTHON" - "$TMP/assess.json" "$RUN_TASK" <<'PY'
+import json, sys
+rows = json.load(open(sys.argv[1]))
+assert rows[0]["task_id"] == sys.argv[2]
+assert rows[0]["expected"] == ["my-agent"]
+assert rows[0]["reporters"] == ["my-agent"]
+assert rows[0]["blind_spots"] == []
+assert rows[0]["unexpected_reporters"] == []
+assert any(item["source"] == "task.assign" for item in rows[0]["expected_sources"])
+assert any(item["source"] == "request.to" for item in rows[0]["expected_sources"])
+PY
 cat > "$TMP/agent-fail.py" <<'PY'
 import sys
 print("agent failed")
@@ -354,6 +438,11 @@ assert any(row.get('retention') == 'no_archive' for row in rows)
 PY
 ab security-check --json > "$TMP/security.json"
 "$PYTHON" -m json.tool "$TMP/security.json" >/dev/null
+"$PYTHON" - "$TMP/security.json" <<'PY'
+import json, sys
+checks = {row["name"]: row for row in json.load(open(sys.argv[1]))["checks"]}
+assert checks["bus_file_permissions"]["status"] == "ok"
+PY
 
 ab wakeup-check --file agentbus/examples/wakeup/claude-inbox.json >/dev/null
 ab wakeup-check --file agentbus/examples/wakeup/codex-inbox.json >/dev/null
@@ -614,6 +703,31 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   sleep 0.1
 done
 REMOTE_PORT=$(cat "$TMP/remote.port")
+if ab a2a-post --file "$TMP/request.json" --endpoint "http://127.0.0.1:$REMOTE_PORT/rpc" --bearer-token smoke-token >"$TMP/post-token-http.out" 2>"$TMP/post-token-http.err"; then
+  echo "a2a-post allowed bearer token over http" >&2
+  exit 1
+fi
+grep -q "bearer token over http blocked" "$TMP/post-token-http.err"
+if ab a2a-post --file "$TMP/request.json" --endpoint " http://127.0.0.1:$REMOTE_PORT/rpc" --bearer-token smoke-token >"$TMP/post-token-http-space.out" 2>"$TMP/post-token-http-space.err"; then
+  echo "a2a-post allowed bearer token over http with leading space" >&2
+  exit 1
+fi
+grep -q "bearer token over http blocked" "$TMP/post-token-http-space.err"
+if ab a2a-post --file "$TMP/request.json" --endpoint "http://127.0.0.1:$REMOTE_PORT/rpc" --header "Authorization: Bearer smoke-token" >"$TMP/post-header-token-http.out" 2>"$TMP/post-header-token-http.err"; then
+  echo "a2a-post allowed credential header over http" >&2
+  exit 1
+fi
+grep -q "credential header over http blocked" "$TMP/post-header-token-http.err"
+if ab a2a-post --file "$TMP/request.json" --endpoint "http://127.0.0.1:$REMOTE_PORT/rpc" --header "X-Auth: smoke-token" >"$TMP/post-x-auth-http.out" 2>"$TMP/post-x-auth-http.err"; then
+  echo "a2a-post allowed x-auth credential header over http" >&2
+  exit 1
+fi
+grep -q "credential header over http blocked" "$TMP/post-x-auth-http.err"
+if ab a2a-post --file "$TMP/request.json" --endpoint "http://127.0.0.1:$REMOTE_PORT/rpc" --header "X-ApiKey: smoke-token" >"$TMP/post-x-apikey-http.out" 2>"$TMP/post-x-apikey-http.err"; then
+  echo "a2a-post allowed x-apikey credential header over http" >&2
+  exit 1
+fi
+grep -q "credential header over http blocked" "$TMP/post-x-apikey-http.err"
 ab a2a-post --file "$TMP/request.json" --endpoint "http://127.0.0.1:$REMOTE_PORT/rpc" --record-response-to reviewer > "$TMP/post-summary.json"
 "$PYTHON" - "$TMP/post-summary.json" "$AGENTBUS_BUS_DIR/tasks.jsonl" "$AGENTBUS_BUS_DIR/messages.jsonl" <<'PY'
 import json, sys
@@ -635,6 +749,16 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   fi
   sleep 0.1
 done
+curl -fsS "http://127.0.0.1:$PORT/api/state" > "$TMP/dashboard-state.json"
+"$PYTHON" - "$TMP/dashboard-state.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))
+assert "assessments" in state
+for row in state["assessments"]:
+    assert "expected" in row
+    assert "expected_sources" in row
+    assert "unexpected_reporters" in row
+PY
 curl -fsS "http://127.0.0.1:$PORT/.well-known/agent-card.json?agent=example" > "$TMP/well-known-card.json"
 ab a2a-card-check --file "$TMP/well-known-card.json" >/dev/null
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: 127.evil.test:$PORT" "http://127.0.0.1:$PORT/api/state")
@@ -700,6 +824,21 @@ missing = sorted(required - sdist_names)
 if missing:
     raise SystemExit('missing from sdist: ' + ', '.join(missing))
 PY
+  INSTALL_VENV="$TMP/install-venv"
+  "$PYTHON" -m venv "$INSTALL_VENV"
+  "$INSTALL_VENV/bin/python" -m pip --disable-pip-version-check install "$WHEEL" >/dev/null
+  "$INSTALL_VENV/bin/agentbus" --help >/dev/null
+  "$INSTALL_VENV/bin/agentbus-dashboard" --help >/dev/null
+  INSTALLED_DEMO=$("$INSTALL_VENV/bin/agentbus" examples demo-bus)
+  test -f "$INSTALLED_DEMO/dashboard-demo.png"
+  INSTALLED_LOOP=$("$INSTALL_VENV/bin/agentbus" loop --path)
+  INSTALLED_WORKFLOW=$("$INSTALL_VENV/bin/agentbus" workflow --path)
+  test -f "$INSTALLED_LOOP"
+  test -f "$INSTALLED_WORKFLOW"
+  INSTALL_BUS="$TMP/install-bus"
+  "$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" init >/dev/null
+  INSTALL_MSG=$("$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" send --from user --to reviewer --kind request --subject "Install smoke" --body "installed wheel")
+  "$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" inbox --agent reviewer | grep -q "$INSTALL_MSG"
   rm -rf "$OUT" build agent_bus.egg-info agent-bus.egg-info agentbus/__pycache__
 fi
 

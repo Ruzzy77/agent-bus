@@ -14,7 +14,14 @@
     }
   ],
   "consensus": [
-    "The pressure trend needs operator review before the next run."
+    {
+      "statement": "The pressure trend needs operator review before the next run.",
+      "participants": ["reviewer-a", "reviewer-b"],
+      "evidenceReferences": [
+        "sensor:pressure:2026-06-16T01:00:00Z",
+        "maintenance:work-order-17"
+      ]
+    }
   ],
   "disagreements": [
     {
@@ -31,7 +38,8 @@
   "uniqueFindings": [
     {
       "participant": "reviewer-b",
-      "finding": "Maintenance work-order timing overlaps with the trend change."
+      "finding": "Maintenance work-order timing overlaps with the trend change.",
+      "evidenceReferences": ["maintenance:work-order-17"]
     }
   ],
   "blindSpots": [

@@ -39,13 +39,15 @@ The packet uses neutral external terms and avoids product names or project-coine
 
 `AssessmentRecords.assessmentSummary` is always present. It is empty unless `--assessment-summary <json>` is supplied.
 
+The summary is author-supplied. agent-bus preserves and projects it; it does not derive agreement from messages or decide consensus. Consensus entries therefore carry explicit provenance. `aas-packet` rejects bare string consensus entries, and `aas-packet-check` checks the projected AAS shape for the same minimum fields.
+
 | Field | Content |
 | --- | --- |
-| `individualAssessments` | Per-participant assessment notes and evidence references. |
-| `consensus` | Points all or most participants agree on. |
-| `disagreements` | Conflicting positions that affect the decision. |
+| `individualAssessments` | Per-participant objects with `participant`, `summary`, and optional evidence references. |
+| `consensus` | Author-supplied agreement objects with `statement`, non-empty `participants`, and optional evidence or communication references. |
+| `disagreements` | Objects with `topic` and participant `positions` that affect the decision. |
 | `partialEvidence` | Evidence only some participants considered, or evidence with limited coverage. |
-| `uniqueFindings` | Findings raised by one participant or one source. |
+| `uniqueFindings` | Objects with `finding` plus `participant` or `source`. |
 | `blindSpots` | Missing observations, tests, or fields. |
 | `decisionsNeeded` | Choices that need a human or next system action. |
 

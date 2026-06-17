@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-> 멀티 에이전트 판단 공유를 위한 로컬 협업 도구
+> 멀티 에이전트 작업을 위한 런타임 중립 로컬 조정·출처 기록층
 
 협업할 에이전트들을 `/agent-bus-loop`로 같은 bus에 연결해 요청과 상태, 근거와 판단을 공유하며 작업을 진행합니다.
 
@@ -10,9 +10,15 @@
 - 로컬 상태 저장소: JSON/JSONL 파일 기반 (`./.agent-bus/`)
 - 로컬 대시보드 (`127.0.0.1`)
 
-## Dashboard demo
+## 정의와 범위
+
+agent-bus는 프로젝트 안에서 이미 실행 중인 에이전트들이 함께 쓰는, 런타임 중립적이고 Git으로 확인할 수 있는 로컬 조정·출처 기록층입니다. 메시지, 작업, 티켓, 보고, 정지 신호를 검사 가능한 로컬 기록으로 남기지만, 에이전트 인증이나 원격 런타임 호스팅, 자체 작업 스케줄링, 팀 합의 판정은 하지 않습니다. 여기서 "판단 공유"는 bus 안의 숨은 모델 추론이 아니라 출처가 남는 보고와 assessment 산출물을 뜻합니다.
+
+## 대시보드 데모
 
 ![agent-bus dashboard demo](agentbus/examples/demo-bus/dashboard-demo.png)
+
+이 스크린샷은 패키지에 포함된 demo bus에서 생성했으며 기본 대시보드의 메시지 타임라인, 티켓, 작업, 완료 작업별 보고 보기, 에이전트 상태를 보여줍니다.
 
 ## Features
 
@@ -22,6 +28,7 @@
 - `/agent-bus-loop` 또는 `agentbus loop` 기반 agent loop entry
 - adapter cursor와 실패 상태 확인
 - 공유 판단 기록용 assessment summary
+- 완료 작업을 선택해 관련 보고를 메시지 타임라인에서 필터링하는 완료 보기
 - webhook, SDK runner, A2A 호출, 로컬 스크립트용 optional event stream
 - 무인 agent runner와 event bridge용 optional wakeup profile
 - 선택 기능으로 제공되는 Codex와 Claude runner 예제
@@ -57,9 +64,16 @@
 ### 1. Install
 
 ```bash
-uv tool install agent-bus              # 또는: pipx install agent-bus
-python -m agentbus --help              # 소스 체크아웃에서 직접 실행
+uv tool install git+https://github.com/Ruzzy77/agent-bus.git
+# 또는: pipx install git+https://github.com/Ruzzy77/agent-bus.git
+
+git clone https://github.com/Ruzzy77/agent-bus.git
+cd agent-bus
+python -m pip install .
+python -m agentbus --help              # console script 설치 없이 소스 체크아웃에서 직접 실행
 ```
+
+PyPI release가 생긴 뒤에는 `uv tool install agent-bus`와 `pipx install agent-bus`가 가장 짧은 설치 경로가 됩니다.
 
 ### 2. (Optional) Install skills
 
@@ -107,6 +121,8 @@ agentbus inbox --agent my-agent
 agentbus send --from my-agent --to all --kind report --subject "status" --body "..."
 agentbus task-state --id t-xxxx --state completed --by my-agent
 ```
+
+리드 에이전트가 loop를 닫을 때 마지막 bus message는 채팅식 요약이 아니라 구조화된 종료 보고서여야 합니다. 전체 template은 `agentbus workflow`에서 확인합니다. 종료 보고서는 종료 판정, 범위, 의사결정 기록, 산출물, 기대 동작, 검증, 미반영 항목, 최종 운영 상태를 남기고, 그 뒤 task를 completed로, agent status를 `done`으로 닫습니다.
 
 ### 6. Direct work request
 
@@ -303,6 +319,7 @@ agentbus status --agent codex --state running --note "joined"
 agentbus inbox --agent codex
 
 Handle request messages, ack only handled messages, update task-state when a task id exists, and report with agentbus send.
+When closing the loop, send the structured termination report from agentbus workflow as the final report, then set task-state completed and status done.
 ```
 
 ### 17. Claude Code use
@@ -329,6 +346,7 @@ agentbus status --agent claude --state running --note "joined"
 agentbus inbox --agent claude
 
 Handle request messages, ack only handled messages, update task-state when a task id exists, and report with agentbus send.
+When closing the loop, send the structured termination report from agentbus workflow as the final report, then set task-state completed and status done.
 ```
 
 Command contract
@@ -340,6 +358,8 @@ Command contract
 - Runtime-specific command: `AGENT_RUNNER_COMMAND`에 운영자 script 또는 CLI wrapper 지정
 
 ### 18. A2A and AAS packet
+
+이 helper들은 로컬 테스트와 인계를 위한 A2A 지향 JSON과 AAS 형식의 assessment packet을 만듭니다. 이것만으로 agent-bus가 호스팅되는 A2A 서버나 인증된 AAS 호환 구현이 되는 것은 아닙니다.
 
 ```bash
 MSG_ID=$(agentbus send --from operator --to reviewer --kind request --subject "Pressure check" --body "Review the attached data")
@@ -370,16 +390,31 @@ agentbus security-check
 - Task states: `submitted`, `working`, `input_required`, `completed`, `failed`, `canceled`
 - Agent states: `running`, `waiting`, `done`, `error`
 
+### 보고 커버리지
+
+`agentbus assess`는 읽기 전용 커버리지 휴리스틱입니다. task assignment와 request target에서 나온 예상 보고자와 실제 report sender를 비교해 `blind_spots`와 예상 밖 보고자를 드러내며, 보고 품질 점수나 진실 판정, 합의 계산은 하지 않습니다.
+
+```bash
+agentbus assess --task t-xxxx
+agentbus assess --json
+```
+
+### 판단 요약
+
+`assessmentSummary`는 `--assessment-summary`로 전달된 내용을 보존·투영하는 필드이며, agent-bus가 bus 기록에서 합의를 계산했다는 뜻이 아닙니다. `consensus` 항목은 `statement`와 비어 있지 않은 `participants`를 가진 객체여야 하고, `evidenceReferences`, `communicationIds`, `workItemIds`로 출처 포인터를 함께 남길 수 있습니다.
+
 ### Local endpoints
 
 - Dashboard bind: `127.0.0.1`
-- Dashboard views: 메시지 타임라인, 작업, 티켓, 에이전트 상태, 정지 요청, 메시지 보관/비우기
+- Dashboard views: 메시지 타임라인, 작업, 티켓, 완료 작업별 보고 필터, 에이전트 상태, 루프 상태/정지 요청, 메시지 보관/비우기
 - Local testing endpoints: `/.well-known/agent-card.json?agent=<id>`, `/a2a/rpc`
 - External hosting, discovery, authentication, streaming, SDK wakeup: adapter 범위
 
 ### Security guardrails
 
+- 신뢰 경계: agent-bus에는 인증이나 신원 증명이 없습니다. bus 디렉터리에 쓸 수 있는 로컬 프로세스는 어느 에이전트로든 메시지를 보내고, ticket을 수락하고, 기록을 비우거나 stop을 요청할 수 있으므로 bus는 하나의 신뢰 경계 안에 있는 프로젝트 디렉터리에서 실행해야 합니다.
 - Local store: plain JSON/JSONL, 파일 권한과 데이터 거버넌스는 운영자 관리
+- 민감도 표시는 자발적입니다. 외부 전송 차단은 `confidential` 또는 `restricted`로 표시된 기록에 적용되며, 표시되지 않은 민감 텍스트는 감지하거나 차단하지 않습니다.
 - `sensitivity`: `public`, `internal`, `confidential`, `restricted`
 - `retention`: `normal`, `session`, `no_archive`
 - Outbound `a2a-post`, `watch-events`, `wakeup`: `confidential`, `restricted`는 명시적 허용 없으면 차단
@@ -387,6 +422,9 @@ agentbus security-check
 - `no_archive`: `rotate` 시 archive로 옮기지 않고 active message log에 유지
 - Dashboard write APIs: local origin과 JSON POST만 허용
 - Token handling: `--token-env` 우선 사용, shell history와 bus message에 직접 토큰 기록 금지
+- `a2a-post`는 `--allow-insecure` 없이 bearer token, credential 성격의 custom header, sensitive request를 `http://` endpoint로 보내지 않습니다. remote endpoint에는 `https://`를 우선 사용합니다.
+- Wakeup profile과 adapter command는 로컬 shell command를 실행합니다. 공유받은 profile은 실행 스크립트처럼 취급해야 하며, `wakeup-check`는 형식과 필수 환경변수만 확인하고 command 안전성은 검증하지 않습니다.
+- Adapter failure log에는 허용된 command가 실패할 때 payload body가 남을 수 있습니다. adapter 디렉터리도 bus message와 같은 데이터 정책으로 비공개 유지, rotation, 삭제를 관리해야 합니다.
 
 ### Commands
 
@@ -396,13 +434,15 @@ agentbus security-check
 | `send`, `inbox`, `ack`, `message-delete` | 메시지 교환과 관리 |
 | `status` | 에이전트 heartbeat와 상태 갱신 |
 | `task-new`, `task-state`, `task-list`, `task-delete` | 작업 수명주기 관리 |
+| `assess` | task별 보고 누락과 사각지대 후보를 읽기 전용으로 요약 |
 | `ticket-new`, `ticket-list`, `ticket-accept`, `ticket-reject` | 사람 검토가 필요한 후보 작업 |
 | `events`, `watch-events`, `wakeup`, `wakeup-check` | bus event 읽기, adapter 실행, wakeup profile 실행 |
 | `adapter-status` | adapter cursor와 실패 요약 출력 |
 | `serve` | localhost 대시보드 실행 |
 | `clear`, `rotate` | 현재 메시지 비우기와 메시지 로그 보관 |
 | `security-check` | 로컬 보호장치와 민감 기록 개수 점검 |
-| `workflow` | 에이전트 협업 절차 출력 |
+| `workflow` | 에이전트 협업 절차와 종료 보고서 template 출력 |
+| `loop` | 루프 entry 절차와 종료 보고 안내 출력 |
 | `examples` | 패키지 예제 경로 출력 |
 | `aas-packet`, `aas-packet-check` | AAS 형식 packet 생성과 검사 |
 | `a2a-card`, `a2a-rpc`, `a2a-rpc-check`, `a2a-post` | A2A용 JSON 생성, 검사, 전송, 응답 기록 |
@@ -451,6 +491,9 @@ request = a2a.send_message_request(msg)
 ```bash
 agentbus/examples/smoke/publish-smoke.sh
 uv build --sdist --wheel --out-dir /tmp/agentbus-dist
+python -m venv /tmp/agentbus-install
+/tmp/agentbus-install/bin/python -m pip install /tmp/agentbus-dist/*.whl
+/tmp/agentbus-install/bin/agentbus --help
 python -m twine check /tmp/agentbus-dist/*   # optional
 ```
 
