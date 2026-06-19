@@ -2,68 +2,91 @@
 
 [한국어](README.ko.md)
 
-> A local work tool for agents to share requests, status, and reports through local files
+> A secure capsule channel for agents to share requests, status, reports, and judgment material
 
 Connect agents to the same bus with `/agent-bus-loop`, then keep sharing requests, status, evidence, and judgment while work continues.
 
 - Messaging hub for inter-agent messages, task state, tickets, and heartbeat
-- Local state store: JSON/JSONL files under `./.agent-bus/`
+- Local state store: encrypted capsule store under `./.agent-bus/store/`
 - Local dashboard (`127.0.0.1`)
 
 ## Scope
 
-agent-bus is a local tool that lets agents already running in your project collaborate over the same work record. Messages, tasks, tickets, reports, and stop signals are kept as JSON/JSONL files in `.agent-bus/`, so Codex, Claude, and local scripts can read and write the same record. Authentication, remote execution hosting, and scheduling belong to the surrounding operator or execution environment. Final judgment and user alignment belong to the lead agent, which synthesizes the bus record. "Judgment sharing" means participant reports with authors and references plus the lead-synthesized `assessmentSummary`.
+agent-bus is a local tool that lets agents already running in your project collaborate over the same secure capsule channel. `.agent-bus/` keeps public channel metadata and an encrypted capsule store, while Codex, Claude, local scripts, and the dashboard use the local API opened by `agentbus bus serve`. Authentication, remote execution hosting, and scheduling belong to the surrounding operator or execution environment. The lead agent synthesizes the bus record, makes the final judgment, and aligns with the user. "Judgment sharing" means keeping participant reports, references, and the lead's synthesis together.
 
 ## Dashboard demo
 
-![agent-bus dashboard demo](agentbus/examples/demo-bus/dashboard-demo.png)
+![agent-bus dashboard demo](agentbus/resources/demo-bus/dashboard-demo.png)
 
 ## Features
 
 - Message, task, ticket, and agent-status sharing
 - Ticket review for risky work or work that needs human confirmation
 - Agent flow: join, watch, check inbox/stop, work, report, wait
-- Agent loop through `/agent-bus-loop` or `agentbus loop`
-- Adapter cursor and failure status check
-- Assessment summary for shared judgment
+- Agent loop through `/agent-bus-loop` or `agentbus guide loop`
+- Bridge position and failure status review
+- Lead synthesis of agent reports and evidence
 - Completed-work report view that filters related task reports from the message timeline
-- Event stream for webhooks, SDK runners, A2A calls, and local scripts
-- Wakeup profiles for automated agent runners and event bridges
-- Codex and Claude runner examples for optional use
-- OpenAI-compatible HTTP adapter example for external model calls
-- Minimum NDA-aware guardrails for outbound adapters
-- Local file and CLI-based operation
+- Event stream for webhooks, A2A calls, and agent runtimes
+- Bridge profiles for agent runtimes and API bridges
+- Codex, Claude, and Gemini runner profile examples
+- OpenAI-compatible handler example for external model calls
+- Minimum NDA-aware guardrails for outbound bridge handlers
+- Capsule API and CLI-based operation
 - localhost dashboard
 
 ## Components
 
-- Bus state: JSON/JSONL files in the project bus directory
+- Bus state: project-local secure capsule channel in `.agent-bus/`
 - Dashboard: local browser view bound to `127.0.0.1`
-- Agent workflow: `agent-bus-loop` entry skill plus `agentbus workflow` prompt text
+- Agent workflow: `agent-bus-loop` entry skill plus `agentbus guide workflow` prompt text
 - Tickets: candidate work that needs human acceptance before task creation
-- Event bridges: scripts that reread the bus before external action
-- Adapter status: event bridge cursor and redacted failure summary
-- Wakeup profiles: reusable JSON config for agent runners and event bridges
+- Event bridges: profiles that route events through typed handlers
+- Bridge status: event bridge position and redacted failure summary
+- Bridge profiles: reusable JSON config with event, matcher, and handler
 - Packet builder: A2A/AAS JSON request, response handling, and packet generation
 
 ## Reports and judgment
 
-agent-bus gives agents one shared record for judgment material. Each agent can leave `report` messages, `--ref` pointers, task state, disagreements, verification results, and remaining decisions on the bus. The lead agent then owns the final judgment, user alignment, user-facing report, and follow-up interaction.
+agent-bus gives agents one shared record for judgment material. Each agent can leave reports, evidence pointers, progress state, disagreements, verification results, and remaining decisions. The lead agent gathers that material into the final judgment, user-facing report, and follow-up interaction.
 
-`assessmentSummary` is the lead-agent synthesis projected into a packet from agent reports and evidence. It separates judgment material and synthesis through `individualAssessments`, `consensus`, `disagreements`, `partialEvidence`, `uniqueFindings`, `evidenceGaps`, and `decisionsNeeded`, with `evidenceReferences`, `communicationIds`, and `workItemIds` for source pointers.
+When the bus record is exported or reviewed later, the lead's synthesis stays with the source record.
+
+- Each agent’s observations and reports
+- Shared judgments and remaining disagreements
+- What is well-supported and what still needs checking
+- The next decisions for the user
+- The messages, work items, and file references behind the judgment
+
+## Lifecycle
+
+The user does not need to learn every command before starting. After installing the skill, ask an agent to run `/agent-bus-loop` or “start an agent-bus collaboration loop for this project.” The first agent acts as the lead until another lead is assigned.
+
+```text
+/agent-bus-loop
+Start an agent-bus collaboration loop in this project.
+Goal: <work to complete>
+Avoid: <scope to leave alone>
+Clarify the requirements only where needed, then guide the bus setup, task creation, collaboration loop, and closure report.
+```
+
+The lead agent asks only for lifecycle-changing missing facts: objective, scope, sensitivity, participating agents or runtimes, and completion criteria. When defaults are safe, it proceeds without expanding the questionnaire. The lead opens or joins the bus, creates the task and request messages, guides dashboard and auth setup when needed, and keeps the loop moving while workers leave reports, refs, and task-state updates.
+
+At closure, the lead writes the final bus `report` as a termination report, marks the task `completed`, marks the agent `done`, and sends a `loop_closed` stop signal when the whole loop is finished. This makes the skill the human-facing entrypoint: the agent can discover the lifecycle and guide the user instead of requiring the user to operate the bus from README memory.
 
 ## Quick start
 
 - Install the CLI
 - Create a bus in a project directory
-- Start `/agent-bus-loop` in an active agent thread or paste `agentbus loop`
-- Give Codex, Claude, and peer agents the same `AGENTBUS_BUS_DIR` or `--bus-dir`
-- Let agents share requests, status, reports, refs, and task state through the bus
+- Start `/agent-bus-loop` in an active agent thread or paste `agentbus guide loop`
+- Give Codex, Claude, and peer agents the same `AGENTBUS_BUS_DIR` or `--bus-dir` channel
+- Let agents share requests, status, reports, refs, and work state through the bus
+- Accumulate reusable work patterns as bus-local skills in `.agent-bus/skills/<skill-id>/SKILL.md` plus `evidence.jsonl`
 - Start the localhost dashboard when a browser view helps
-- Use direct tasks and request messages for work that can proceed on agent judgment
+- Use tasks and request messages for work an agent can judge and start directly
 - Keep autonomous work moving; reserve tickets for human-triage decisions
-- Use tickets for new proposals or critical work that needs human review before execution
-- Use `watch-events` or `wakeup` for user-run runtimes that need unattended polling or event bridging
+- Use tickets for new proposals or risky changes that need human review before execution
+- Use `bridge watch` or `bridge run` for user-run runtimes that need unattended polling or event bridging
 
 ### 1. Install
 
@@ -77,19 +100,17 @@ python -m pip install .
 python -m agentbus --help              # source checkout direct run
 ```
 
-After a PyPI release exists, `uv tool install agent-bus` and `pipx install agent-bus` should be the shortest install paths.
-
 ### 2. (Optional) Install skills
 
 - `agent-bus-loop`: small entry skill for "start loop", "stop loop", or slash-style `/agent-bus-loop` requests
 - `agent-bus-workflow`: full workflow skill for inbox, ack, task state, stop, ticket, and bridge handling
-- For runtimes that load prompt text manually, paste `agentbus loop`; use `agentbus workflow` for the full rule set
+- For runtimes that load prompt text manually, paste `agentbus guide loop`; use `agentbus guide workflow` for the full rule set
 - Restart the agent runtime after copying
 
 ```bash
 : "${AGENT_SKILLS_DIR:?set the agent runtime skills directory}"
 mkdir -p "$AGENT_SKILLS_DIR"
-skills_src="$(dirname "$(dirname "$(agentbus workflow --path)")")"
+skills_src="$(dirname "$(dirname "$(agentbus guide workflow --path)")")"
 for src in "$skills_src"/agent-bus-*; do
   dst="$AGENT_SKILLS_DIR/$(basename "$src")"
   test ! -e "$dst" || { echo "already exists: $dst"; continue; }
@@ -97,45 +118,67 @@ for src in "$skills_src"/agent-bus-*; do
 done
 ```
 
+Bus-local skills are project-local reuse records. After the bus is initialized and `agentbus bus serve` is running, record reusable flows or corrected paths in `.agent-bus/skills/<skill-id>/SKILL.md` and append use evidence through the CLI. `agentbus guide loop` and `agentbus guide workflow` show a compact local-skill summary at the normal start point.
+Skill cleanup happens in the same maturation pass: run `agentbus skill review`, then decide at closure whether to keep, retire, install, combine, or simplify the local skill. Record the handled review boundary with `agentbus skill state`.
+
+```bash
+agentbus skill new loop-close --description "Keep loop closure reports short and traceable"
+agentbus skill list
+agentbus skill show <skill-id>
+agentbus skill evidence <skill-id> --type check --ref <message-or-file-ref> --note "reusable observation"
+agentbus skill review
+agentbus skill state <skill-id> --state active
+```
+
 ### 3. Start a bus
 
 ```bash
 cd ~/my-project
-agentbus init
-agentbus serve      # http://127.0.0.1:8765
+agentbus bus init
+agentbus bus serve      # http://127.0.0.1:8765
 ```
 
 ### 4. Demo bus
 
-Use the packaged demo bus for dashboard screenshots or local UI checks. Run a copy if you need to edit it.
+Use the packaged demo bus for dashboard screenshots or local UI checks. Run it from a copy so send/delete/auth actions stay out of the packaged fixture.
 
 ```bash
-DEMO=$(agentbus examples demo-bus)
-AGENTBUS_BUS_DIR="$DEMO" agentbus serve --port 8791
+DEMO_WORK=$(mktemp -d "${TMPDIR:-/tmp}/agentbus-demo.XXXXXX")
+cp -R "$(agentbus resource path demo-bus)" "$DEMO_WORK/bus"
+echo "$DEMO_WORK/bus"
+AGENTBUS_BUS_DIR="$DEMO_WORK/bus" agentbus bus migrate --from "$DEMO_WORK/bus"
+AGENTBUS_BUS_DIR="$DEMO_WORK/bus" agentbus bus serve --port 8791
+```
+
+In another shell, issue a temporary demo viewer token to try dashboard authentication from Settings. The token lasts 1 hour by default, and the package does not ship a fixed credential. `auth demo` also prepares the demo restricted messages and ticket so authenticated viewing visibly unlocks them.
+
+```bash
+export AGENTBUS_BUS_DIR=<printed-demo-bus-path>
+agentbus auth demo
 ```
 
 ### 5. Agent loop
 
-Ask the active agent to run `/agent-bus-loop`. Use the installed skill when available, or paste `agentbus loop` output into the thread.
+Ask the active agent to run `/agent-bus-loop`. Use the installed skill when available, or paste `agentbus guide loop` output into the thread.
 
 ```bash
-agentbus check-stop
-agentbus status --agent my-agent --state running --note "started"
-agentbus inbox --agent my-agent
-agentbus send --from my-agent --to all --kind report --subject "status" --body "..."
-agentbus task-state --id t-xxxx --state completed --by my-agent
+agentbus bus status --stop-exit-code
+agentbus agent set --agent my-agent --state running --note "started"
+agentbus agent inbox --agent my-agent
+agentbus message send --from my-agent --to all --kind report --subject "status" --body "..."
+agentbus task state --id t-xxxx --state completed --by my-agent
 ```
 
-When a lead agent closes a loop, the final bus message should be a structured termination report for dashboard reading and later audit. Use `agentbus workflow` for the full template. The report should record the closure decision, scope, decision trace, outputs, expected behavior, verification, non-applied items, and final operational state, then the agent should mark the task completed and its status `done`. If the whole bus loop is closed, send `agentbus stop --by <agent> --reason loop_closed --detail "termination report <message-id>"` after that final report.
+When a lead agent closes a loop, the final bus message should be a structured termination report for dashboard reading and later audit. Use `agentbus guide workflow` for the full template. The report should record the closure decision, scope, decision trace, outputs, expected behavior, verification, non-applied items, and final operational state, then the agent should mark the task completed and its status `done`. If the whole bus loop is closed, send `agentbus bus stop --by <agent> --reason loop_closed --detail "termination report <message-id>"` after that final report.
 
 ### 6. Direct work request
 
 Use this path for work that can proceed on agent judgment.
 
 ```bash
-TASK_ID=$(agentbus task-new --title "review adapter wording" --by user --assign my-agent)
-agentbus send --from user --to my-agent --kind request \
-  --subject "review adapter wording" \
+TASK_ID=$(agentbus task new --title "review bridge wording" --by user --assign my-agent)
+agentbus message send --from user --to my-agent --kind request \
+  --subject "review bridge wording" \
   --body "Review the current wording and report the smallest safe change" \
   --task "$TASK_ID"
 ```
@@ -145,170 +188,85 @@ agentbus send --from user --to my-agent --kind request \
 Use tickets for new proposals, risky changes, or work that should wait for human review. While a ticket waits for triage, continue safe active tasks.
 
 ```bash
-agentbus ticket-new --title "review adapter wording" --by user
-agentbus ticket-accept --id i-xxxx --by user --to my-agent --note "keep wording neutral"
-agentbus task-state --id t-xxxx --state input_required --by my-agent --note "decision needed"
+agentbus ticket new --title "review bridge wording" --by user
+agentbus ticket accept --id i-xxxx --by user --to my-agent --note "keep wording neutral"
+agentbus task state --id t-xxxx --state input_required --by my-agent --note "decision needed"
 ```
 
 ### 8. Event bridge
 
 ```bash
-agentbus watch-events --types message.created,ticket.created \
+agentbus bridge watch --types message.created,ticket.created \
   --target reviewer \
-  --cursor-file .agent-bus/adapters/reviewer.cursor \
-  --fail-log .agent-bus/adapters/reviewer.failures.jsonl \
-  --exec agentbus/examples/adapters/a2a-outbound.sh
+  --position-file .agent-bus/bridge/reviewer.position
 ```
 
-### 9. Wakeup profile
+### 9. Bridge profile
 
 ```bash
-PROFILE=$(agentbus examples wakeup/claude-inbox.json)
-agentbus wakeup-check --file "$PROFILE"
-agentbus wakeup --profile "$PROFILE" --once
-A2A_ENDPOINT=https://example.com/a2a/rpc \
-  agentbus wakeup --profile "$(agentbus examples wakeup/a2a-events.json)"
+cp .agent-bus/bridge/profile.template.json .agent-bus/bridge/reviewer.json
+$EDITOR .agent-bus/bridge/reviewer.json
+
+agentbus bridge check --file .agent-bus/bridge/reviewer.json
+agentbus bridge run --profile .agent-bus/bridge/reviewer.json --once
 ```
 
-The profile is command input for the operator or agent runtime. The bus records state, while process ownership stays with the runtime that executes the command.
+The profile routes bus events through a small matcher and a typed handler. Active profiles live in `.agent-bus/bridge/*.json`; package resources are examples that can be copied into that local directory. Dashboard gateways show the inbound endpoints currently opened by `bus serve`.
 
-## Execution examples
+```bash
+cp "$(agentbus resource path bridge/claude-inbox.json)" .agent-bus/bridge/claude-inbox.json
+```
 
-### OpenAI-compatible adapter
+## Recipes
+
+### OpenAI-compatible handler
 
 ```bash
 export OPENAI_COMPAT_ENDPOINT=https://model-gateway.example/v1/chat/completions
 export OPENAI_COMPAT_MODEL=assessment-router
-export OPENAI_COMPAT_TOKEN_ENV=MODEL_GATEWAY_API_KEY
+export OPENAI_COMPAT_API_KEY=...
 export OPENAI_COMPAT_RESPONSE_TO=operator
-agentbus aas-packet --asset-id urn:example:asset:line-7-press-2 \
-  --data agentbus/examples/aas/operational-data.sample.json \
-  --assessment-summary agentbus/examples/aas/assessment-summary.sample.json |
-  "$(agentbus examples adapters/openai-compatible.sh)"
-```
-
-### Agent runner example
-
-```bash
-agentbus ticket-accept --id i-xxxx --by user --to my-agent --note "run"
-export AGENT_RUNNER_COMMAND='your-agent-command --json'
-agentbus wakeup --profile "$(agentbus examples wakeup/agent-runner-inbox.json)" --once
+agentbus bridge run --profile "$(agentbus resource path bridge/openai-compatible-messages.json)" --once
 ```
 
 ### Codex CLI runner
 
-Prerequisites
-
-- `codex exec --help` works in the shell
-- Codex CLI login is complete
-- `CODEX_RUNNER_CWD` points to the project the agent may inspect
+Codex runner profiles call `codex exec`. Put Codex options in `handler.args`.
 
 ```bash
-cd ~/my-project
-agentbus init
-
-TASK_ID=$(agentbus task-new --title "codex runner smoke" --by user --assign codex)
-agentbus send --from user --to codex --kind request \
-  --subject "runner smoke" \
-  --body "Return exactly: agentbus-codex-ok" \
-  --task "$TASK_ID"
-
-PROFILE=$(agentbus examples wakeup/codex-runner-inbox.json)
-agentbus wakeup --profile "$PROFILE" --once --dry-run
-CODEX_RUNNER_MODE=cli \
-  CODEX_RUNNER_CWD="$PWD" \
-  CODEX_RUNNER_SANDBOX=read-only \
-  CODEX_RUNNER_EXTRA_ARGS="--ephemeral" \
-  agentbus wakeup --profile "$PROFILE" --once
-
-agentbus inbox --agent codex
-```
-
-For work that needs human review, create a ticket first and accept it to `codex` instead of using `task-new` and `send` directly.
-
-### Codex SDK runner
-
-`openai-codex` is an optional runtime dependency supplied by the runner environment.
-
-```bash
-python -m venv .venv-codex-runner
-. .venv-codex-runner/bin/activate
-python -m pip install openai-codex
-
-agentbus send --from user --to codex --kind request \
-  --subject "sdk runner smoke" \
-  --body "Return exactly: agentbus-codex-sdk-ok"
-
-PROFILE=$(agentbus examples wakeup/codex-runner-inbox.json)
-agentbus wakeup --profile "$PROFILE" --once --dry-run
-CODEX_RUNNER_MODE=sdk \
-  CODEX_RUNNER_CWD="$PWD" \
-  CODEX_RUNNER_SANDBOX=read-only \
-  agentbus wakeup --profile "$PROFILE" --once
+PROFILE=$(agentbus resource path bridge/codex-runner-inbox.json)
+agentbus bridge run --profile "$PROFILE" --once --dry-run
+agentbus bridge run --profile "$PROFILE" --once
 ```
 
 ### Claude CLI runner
 
-Prerequisites
-
-- `claude -p "hello"` works in the shell
-- Claude Code CLI login is complete
-- `CLAUDE_RUNNER_CWD` points to the project the agent may inspect
+Claude runner profiles call `claude -p`. Put Claude options in `handler.args`.
 
 ```bash
-cd ~/my-project
-agentbus init
-
-TASK_ID=$(agentbus task-new --title "claude runner smoke" --by user --assign claude)
-agentbus send --from user --to claude --kind request \
-  --subject "runner smoke" \
-  --body "Return exactly: agentbus-claude-ok" \
-  --task "$TASK_ID"
-
-PROFILE=$(agentbus examples wakeup/claude-runner-inbox.json)
-agentbus wakeup --profile "$PROFILE" --once --dry-run
-CLAUDE_RUNNER_MODE=cli \
-  CLAUDE_RUNNER_CWD="$PWD" \
-  CLAUDE_RUNNER_PERMISSION_MODE=plan \
-  agentbus wakeup --profile "$PROFILE" --once
-
-agentbus inbox --agent claude
+PROFILE=$(agentbus resource path bridge/claude-runner-inbox.json)
+agentbus bridge run --profile "$PROFILE" --once --dry-run
+agentbus bridge run --profile "$PROFILE" --once
 ```
 
-### Claude Agent SDK and Messages API runners
+### Gemini CLI runner
 
-`claude-agent-sdk` and `ANTHROPIC_API_KEY` are optional runtime inputs supplied by the runner environment. `api` mode sends one Messages API request; file or shell tools come from the receiving service when available.
+Gemini runner profiles call `gemini -p`. Put Gemini options in `handler.args`.
 
 ```bash
-python -m venv .venv-claude-runner
-. .venv-claude-runner/bin/activate
-python -m pip install claude-agent-sdk
-export ANTHROPIC_API_KEY=...
-
-agentbus send --from user --to claude --kind request \
-  --subject "sdk runner smoke" \
-  --body "Return exactly: agentbus-claude-sdk-ok"
-
-PROFILE=$(agentbus examples wakeup/claude-runner-inbox.json)
-agentbus wakeup --profile "$PROFILE" --once --dry-run
-CLAUDE_RUNNER_MODE=sdk \
-  CLAUDE_RUNNER_CWD="$PWD" \
-  CLAUDE_RUNNER_PERMISSION_MODE=plan \
-  agentbus wakeup --profile "$PROFILE" --once
-
-CLAUDE_RUNNER_MODE=api \
-  CLAUDE_RUNNER_MODEL=claude-sonnet-4-5 \
-  agentbus wakeup --profile "$PROFILE" --once
+PROFILE=$(agentbus resource path bridge/gemini-runner-inbox.json)
+agentbus bridge run --profile "$PROFILE" --once --dry-run
+agentbus bridge run --profile "$PROFILE" --once
 ```
 
 ### Codex app use
 
-The Codex app uses agent-bus as a tool while the thread is active. Automatic app wakeup is outside this package.
+The Codex app uses agent-bus as a tool while the thread is active. Automatic app launch is outside this package.
 
 ```bash
 cd ~/my-project
-agentbus init
-agentbus workflow > /tmp/agentbus-workflow.md
+agentbus bus init
+agentbus guide workflow > /tmp/agentbus-workflow.md
 ```
 
 Prompt text for a Codex app thread
@@ -318,24 +276,24 @@ Use agent-bus for this thread.
 You are codex.
 Bus directory: /absolute/path/to/my-project/.agent-bus
 
-Read the workflow from agentbus workflow or from the installed agent-bus-workflow skill.
+Read the workflow from agentbus guide workflow or from the installed agent-bus-workflow skill.
 Start by running:
-agentbus check-stop
-agentbus status --agent codex --state running --note "joined"
-agentbus inbox --agent codex
+agentbus bus status --stop-exit-code
+agentbus agent set --agent codex --state running --note "joined"
+agentbus agent inbox --agent codex
 
-Handle request messages, ack handled messages, update task-state when a task id exists, and report with agentbus send.
-When closing the loop, send the structured termination report from agentbus workflow as the final report, then set task-state completed and status done.
+Handle request messages, ack handled messages, update task state when a task id exists, and report with `agentbus message send`.
+When closing the loop, send the structured termination report from agentbus guide workflow as the final report, then set task state completed and status done.
 ```
 
 ### Claude Code use
 
-Claude Code uses agent-bus as a tool while the thread is active. Automatic app wakeup is outside this package.
+Claude Code uses agent-bus as a tool while the thread is active. Automatic app launch is outside this package.
 
 ```bash
 cd ~/my-project
-agentbus init
-agentbus loop > /tmp/agentbus-loop.md
+agentbus bus init
+agentbus guide loop > /tmp/agentbus-loop.md
 ```
 
 Prompt text for a Claude thread
@@ -345,14 +303,14 @@ Use agent-bus for this thread.
 You are claude.
 Bus directory: /absolute/path/to/my-project/.agent-bus
 
-Start /agent-bus-loop if the skill is installed. Otherwise read the loop text from agentbus loop and the full workflow from agentbus workflow.
+Start /agent-bus-loop if the skill is installed. Otherwise read the loop text from agentbus guide loop and the full workflow from agentbus guide workflow.
 Start by running:
-agentbus check-stop
-agentbus status --agent claude --state running --note "joined"
-agentbus inbox --agent claude
+agentbus bus status --stop-exit-code
+agentbus agent set --agent claude --state running --note "joined"
+agentbus agent inbox --agent claude
 
-Handle request messages, ack handled messages, update task-state when a task id exists, and report with agentbus send.
-When closing the loop, send the structured termination report from agentbus workflow as the final report, then set task-state completed and status done.
+Handle request messages, ack handled messages, update task state when a task id exists, and report with `agentbus message send`.
+When closing the loop, send the structured termination report from agentbus guide workflow as the final report, then set task state completed and status done.
 ```
 
 ### Command contract
@@ -361,32 +319,36 @@ When closing the loop, send the structured termination report from agentbus work
 - Output: stdout becomes the report body
 - Success: report message, task completion, source-message ack
 - Failure: task failure, pending ack, message remains available for retry
-- Runtime-specific command: operator script or CLI wrapper in `AGENT_RUNNER_COMMAND`
+- Runtime entrypoint: fixed provider entrypoint (`codex exec`, `claude -p`, `gemini -p`)
 
 ## A2A and AAS packet
 
-These helpers build local A2A-facing JSON and AAS-style assessment packets for testing and handoff. Public A2A hosting and certified AAS conformance belong to the surrounding integration layer.
+Internal collaboration uses `message`, `task`, `ticket`, and `bridge` without packet conversion. `packet` appears at external protocol boundaries: building AAS-compatible data packets, wrapping them for A2A, sending them, or receiving A2A requests back into the bus. Public A2A hosting and certified AAS conformance belong to the surrounding integration layer.
 
 ```bash
-MSG_ID=$(agentbus send --from operator --to reviewer --kind request --subject "Pressure check" --body "Review the attached data")
-agentbus aas-packet --asset-id urn:example:asset:line-7-press-2 \
-  --data agentbus/examples/aas/operational-data.sample.json \
-  --assessment-summary agentbus/examples/aas/assessment-summary.sample.json \
+MSG_ID=$(agentbus message send --from operator --to reviewer --kind request --subject "Pressure check" --body "Review the attached data")
+agentbus packet data --protocol aas --asset-id urn:example:asset:line-7-press-2 \
+  --data agentbus/resources/aas/operational-data.sample.json \
+  --assessment-summary agentbus/resources/aas/assessment-summary.sample.json \
   --out packet.json
-agentbus a2a-rpc --message-id "$MSG_ID" --data packet.json --out request.json
-agentbus a2a-post --file request.json --endpoint https://example.com/a2a/rpc \
+agentbus packet transport --protocol a2a --artifact message --message-id "$MSG_ID" --data packet.json --out request.json
+agentbus packet send --protocol a2a --file request.json --endpoint https://example.com/a2a/rpc \
   --token-env A2A_TOKEN --record-response-to operator
 ```
 
 ## Sensitive data
 
+With `agentbus bus serve` running, grant access before reading `restricted` raw projections. Grant commands print each token once. Agents present agent tokens with `AGENTBUS_AGENT_TOKEN`; dashboard viewers enter viewer tokens in Settings.
+
 ```bash
-MSG_ID=$(agentbus send --from operator --to reviewer --kind request \
+# In another shell while bus serve is running
+AGENT_TOKEN=$(agentbus auth grant --agent reviewer --ttl-seconds 604800)
+VIEWER_TOKEN=$(agentbus auth grant --viewer operator --ttl-seconds 86400)
+MSG_ID=$(agentbus message send --from operator --to reviewer --kind request \
   --subject "NDA review" --body "Review local NDA data" \
-  --sensitivity confidential --retention no_archive)
-agentbus a2a-rpc --message-id "$MSG_ID" --out request.json
-agentbus a2a-post --file request.json --endpoint https://example.com/a2a/rpc --allow-sensitive
-agentbus security-check
+  --sensitivity restricted --retention no_archive)
+AGENTBUS_AGENT_TOKEN="$AGENT_TOKEN" agentbus agent inbox --agent reviewer
+agentbus bus security-check
 ```
 
 ## Reference
@@ -401,43 +363,127 @@ agentbus security-check
 - Dashboard bind: `127.0.0.1`
 - Dashboard views: message timeline, tasks, tickets, completed-work report filter, agent state, loop status/stop request, archive/clear controls
 - Local test endpoints: `/.well-known/agent-card.json?agent=<id>`, `/a2a/rpc`
-- External hosting, discovery, authentication, streaming, SDK wakeup: adapter scope
+- External hosting, discovery, authentication, streaming, SDK bridge: gateway or bridge-handler scope
 
 ### Security guardrails
 
-- Trust boundary: agent identity comes from the local trust domain. Any local process with write access to the bus directory can send as an agent, accept tickets, clear records, or request stop; run a bus inside one trusted project boundary.
-- Local store: plain JSON/JSONL; host file permissions and data governance stay with the operator
-- Sensitivity marking is explicit. Outbound transfer requires sensitive handling for records marked `confidential` or `restricted`; data governance starts with correctly marking sensitive records.
-- `sensitivity`: `public`, `internal`, `confidential`, `restricted`
+- Trust boundary: agent identity comes from the local trust domain. Normal commands mutate records through the capsule daemon API; run a bus inside one trusted project boundary.
+- Local store: `.agent-bus/channel.json` keeps public channel metadata, and `.agent-bus/store/capsule.sqlite` stores content-bearing fields as AEAD-encrypted payloads. The raw key lives outside the project in user config.
+- `sensitivity`: `normal` permits local/external raw use, `internal` permits local raw sharing plus external redacted projection, and `restricted` permits raw reads for authorized agents and dashboard viewers.
 - `retention`: `normal`, `session`, `no_archive`
-- Outbound `a2a-post`, `watch-events`, and `wakeup`: require explicit sensitive handling for `confidential` and `restricted` records
-- Sensitive-blocked `watch-events` and `wakeup` output: redacted notice with payload body withheld
+- Agent auth: `agentbus auth grant --agent <agent> --ttl-seconds <seconds>` issues a one-time token. The agent presents it with `AGENTBUS_AGENT_TOKEN` to read `restricted` inbox/watch payloads. Granting the same name again replaces the token and acts as rotation.
+- Dashboard auth: `agentbus auth grant --viewer <name> --ttl-seconds <seconds>` issues a one-time token. The viewer enters it in Settings to read `restricted` records during that session. Replaced or expired tokens also remove raw view from existing dashboard sessions.
+- Packet send: `restricted` sources are blocked for external send; `internal` sources can leave only as redacted projections.
+- Bridge: HTTP, A2A, and OpenAI-compatible handlers do not run on `restricted` events. Local agent handlers receive raw work packets only when the target agent token matches.
+- Dashboard: default `/api/state` and `/api/events` return redacted `restricted` records; an authenticated viewer session receives raw local records.
 - `no_archive`: stays in the active message log during `rotate`
 - Dashboard write APIs: local origin and JSON POST required
-- Token handling: prefer `--token-env`; avoid direct tokens in shell history and bus messages
-- `a2a-post` uses `https://` for bearer tokens, credential-like custom headers, and sensitive requests; `--allow-insecure` is the explicit local/test override
-- Wakeup profiles and adapter commands execute local shell commands. Treat shared profiles like executable scripts; `wakeup-check` validates shape and required environment, while command review stays with the operator.
-- Adapter failure logs may contain payload bodies when an allowed command fails; keep adapter directories private and rotate/delete logs according to the same data policy as bus messages.
+- Token handling: use `--token-env` for A2A bearer tokens and `AGENTBUS_AGENT_TOKEN` for agent capability tokens.
+- `packet send --protocol a2a` uses `https://` for bearer tokens and credential-like custom headers; `--allow-insecure` is the explicit local/test override.
+- Bridge profiles use monitor, agent, HTTP, and OpenAI-compatible handlers. Agent handlers call fixed `codex exec`, `claude -p`, or `gemini -p` entrypoints.
+- Bridge failure logs never store raw restricted payloads; keep bridge directories private and rotate/delete logs according to the same data policy as bus messages.
+- agent-bus does not fully block deliberate same-OS-user memory/process attacks. NDA operations can add OS users, sandboxing, containers, or key isolation when that boundary matters.
 
 ### Commands
 
+#### bus
+
 | Command | Use |
 | --- | --- |
-| `init`, `show-status`, `check-stop` | Create a bus, inspect state, honor stop signals |
-| `send`, `inbox`, `ack`, `message-delete` | Exchange and manage messages |
-| `status` | Update agent heartbeat and state |
-| `task-new`, `task-state`, `task-list`, `task-delete` | Manage task lifecycle |
-| `ticket-new`, `ticket-list`, `ticket-accept`, `ticket-reject` | Human-gated candidate work |
-| `events`, `watch-events`, `wakeup`, `wakeup-check` | Read bus events, run adapters, or run a wakeup profile |
-| `adapter-status` | Print adapter cursor and failure summary |
-| `serve` | Run the localhost dashboard |
-| `clear`, `rotate` | Clear current messages or archive the message log |
-| `security-check` | Check local guardrails and sensitive-record counts |
-| `workflow` | Print the agent collaboration procedure and termination report template |
-| `loop` | Print the loop entry procedure and closure-report guidance |
-| `examples` | Print packaged example paths |
-| `aas-packet`, `aas-packet-check` | Build and check an AAS-style packet |
-| `a2a-card`, `a2a-rpc`, `a2a-rpc-check`, `a2a-post` | Build, check, send, and record A2A-facing JSON |
+| `bus init` | Create a secure capsule channel |
+| `bus serve` | Run the localhost dashboard |
+| `bus status` | Inspect bus state and stop request |
+| `bus stop` | Write a cooperative stop request |
+| `bus clear` | Clear current session records |
+| `bus rotate` | Archive the message log |
+| `bus security-check` | Check local guardrails and sensitive records |
+| `bus supervise` | Supervise agent heartbeat and time limits |
+
+#### agent
+
+| Command | Use |
+| --- | --- |
+| `agent list` | Print agent state rows |
+| `agent set` | Update agent heartbeat and state |
+| `agent delete` | Delete an agent state row |
+| `agent inbox` | Read an agent inbox |
+| `agent ack` | Mark a handled message |
+| `agent watch` | Watch unacked requests |
+
+#### auth
+
+| Command | Use |
+| --- | --- |
+| `auth init` | Check or prepare capsule auth state |
+| `auth grant --agent/--viewer [--ttl-seconds <seconds>]` | Issue an agent or dashboard viewer restricted token |
+| `auth demo` | Create a demo viewer token and demo-only restricted sample |
+| `auth revoke --agent/--viewer` | Revoke an agent or dashboard viewer restricted token |
+| `auth list` | Print restricted grants |
+
+#### message
+
+| Command | Use |
+| --- | --- |
+| `message send` | Send a message |
+| `message delete` | Record a message deletion event |
+
+#### task
+
+| Command | Use |
+| --- | --- |
+| `task new` | Create a task |
+| `task state` | Update task state |
+| `task list` | Print task rows |
+| `task delete` | Record a task deletion event |
+
+#### ticket
+
+| Command | Use |
+| --- | --- |
+| `ticket new` | Create candidate work |
+| `ticket list` | Print ticket rows |
+| `ticket accept` | Promote a ticket to a task and request message |
+| `ticket reject` | Reject a ticket |
+
+#### skill
+
+| Command | Use |
+| --- | --- |
+| `skill new` | Create a bus-local skill draft |
+| `skill list` | Print bus-local skills |
+| `skill show` | Print bus-local `SKILL.md` |
+| `skill state` | Change bus-local skill state |
+| `skill review` | Summarize skill evidence and warnings to handle |
+| `skill evidence` | Record skill use evidence |
+
+#### bridge
+
+| Command | Use |
+| --- | --- |
+| `bridge events` | Read bus events |
+| `bridge watch` | Watch new bus events |
+| `bridge run` | Run a bridge profile |
+| `bridge check` | Check a bridge profile |
+| `bridge status` | Print bridge positions and failure summaries |
+
+#### packet
+
+| Command | Use |
+| --- | --- |
+| `packet data --protocol aas` | Build or check an AAS-compatible data packet |
+| `packet transport --protocol a2a --artifact card` | Build or check an A2A Agent Card |
+| `packet transport --protocol a2a --artifact message` | Build or check an A2A SendMessage request |
+| `packet send --protocol a2a` | Send an A2A request |
+| `packet receive --protocol a2a` | Import an A2A request as a bus message |
+
+#### guide / resource
+
+| Command | Use |
+| --- | --- |
+| `guide workflow` | Print the collaboration workflow and termination report template |
+| `guide loop` | Print the loop entry and closure-report guidance |
+| `resource list` | Print packaged resource names |
+| `resource path` | Print a packaged resource path |
 
 ### Configuration
 
@@ -445,10 +491,10 @@ Priority: CLI arguments, `AGENTBUS_*` environment variables, current working dir
 
 | Environment variable | Use |
 | --- | --- |
-| `AGENTBUS_BUS_DIR` | Bus directory (`--bus-dir`) |
+| `AGENTBUS_BUS_DIR` | Channel directory (`--bus-dir`) |
 | `AGENTBUS_CARDS_DIR` | Agent card directory (`--cards-dir`) |
-| `AGENTBUS_ROOT` | File index root (`serve --root`) |
-| `AGENTBUS_PORT` | Dashboard port (`serve --port`) |
+| `AGENTBUS_ROOT` | File index root (`bus serve --root`) |
+| `AGENTBUS_PORT` | Dashboard port (`bus serve --port`) |
 | `AGENTBUS_MAX_BYTES` | Auto-rotate message log threshold, default 5 MB, `0` disables it |
 | `AGENTBUS_ARCHIVE_KEEP` | Number of archives to keep, default `0` keeps all |
 
@@ -470,9 +516,8 @@ request = a2a.send_message_request(msg)
 
 ### Package contents
 
-- Wakeup profile examples: `agentbus/examples/wakeup`
-- Adapter examples: `agentbus/examples/adapters`
-- Demo dashboard bus: `agentbus/examples/demo-bus`
+- Bridge profile resources: `agentbus/resources/bridge`
+- Demo dashboard bus: `agentbus/resources/demo-bus`
 - Formula rendering: `vendor/katex`
 - License: MIT
 
@@ -481,7 +526,7 @@ request = a2a.send_message_request(msg)
 Before publishing from a source checkout:
 
 ```bash
-agentbus/examples/smoke/publish-smoke.sh
+agentbus/resources/smoke/publish-smoke.sh
 uv build --sdist --wheel --out-dir /tmp/agentbus-dist
 python -m venv /tmp/agentbus-install
 /tmp/agentbus-install/bin/python -m pip install /tmp/agentbus-dist/*.whl

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Localhost dashboard for the agent bus.
-
-Stdlib only. Binds to 127.0.0.1.
-"""
+"""Localhost dashboard for the agent bus. Binds to 127.0.0.1."""
 from __future__ import annotations
 
 import argparse
+from http.cookies import SimpleCookie
+import hashlib
 import ipaddress
 import json
 import os
+import secrets
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +24,9 @@ IGNORE_DIRS = {".git", ".agent-bus", "node_modules", "__pycache__",
                ".venv", "venv", "build", ".pytest_cache", ".mypy_cache", ".ipynb_checkpoints"}
 IGNORE_EXT = {".pyc", ".lock", ".aux", ".log", ".out", ".toc"}
 _file_cache: dict = {"root": None, "ts": 0.0, "list": []}
+DASHBOARD_SESSION_COOKIE = "agentbus_dashboard"
+DASHBOARD_SESSION_TTL = 3600
+_dashboard_sessions: dict[str, dict] = {}
 
 
 def list_files(root: Path) -> list[str]:
@@ -122,18 +125,53 @@ def _same_local_origin(value: str, host_header: str) -> bool:
     return _is_loopback_host(origin_host) and _is_loopback_host(request_host) and origin_port == request_port
 
 
+def _session_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _prune_dashboard_sessions() -> None:
+    now = time.time()
+    for key, row in list(_dashboard_sessions.items()):
+        if float(row.get("expires", 0)) <= now:
+            _dashboard_sessions.pop(key, None)
+
+
+def _session_cookie(value: str = "", max_age: int = 0) -> str:
+    cookie = SimpleCookie()
+    cookie[DASHBOARD_SESSION_COOKIE] = value
+    morsel = cookie[DASHBOARD_SESSION_COOKIE]
+    morsel["path"] = "/"
+    morsel["httponly"] = True
+    morsel["samesite"] = "Strict"
+    morsel["max-age"] = str(max_age)
+    return morsel.OutputString()
+
+
+def _argv_bus_dir(argv: list[str]) -> Path | None:
+    for idx, item in enumerate(argv):
+        if item == "--bus-dir" and idx + 1 < len(argv):
+            return Path(argv[idx + 1]).expanduser()
+        if item.startswith("--bus-dir="):
+            return Path(item.split("=", 1)[1]).expanduser()
+    return None
+
+
 class Handler(BaseHTTPRequestHandler):
     bus_dir: Path
 
-    def _reply(self, code: int, body: bytes, ctype: str) -> None:
+    def _reply(self, code: int, body: bytes, ctype: str, headers: dict[str, str] | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
-    def _json(self, code: int, value) -> None:
-        self._reply(code, json.dumps(value, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+    def _json(self, code: int, value, headers: dict[str, str] | None = None) -> None:
+        hdrs = {"Cache-Control": "no-store"}
+        hdrs.update(headers or {})
+        self._reply(code, json.dumps(value, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", hdrs)
 
     def _file(self, root: Path, rel: str) -> None:
         target = resolve_asset(root, rel)
@@ -165,6 +203,27 @@ class Handler(BaseHTTPRequestHandler):
                 return False
         return True
 
+    def _viewer_session(self) -> dict | None:
+        _prune_dashboard_sessions()
+        cookie_header = self.headers.get("Cookie") or ""
+        cookie = SimpleCookie()
+        try:
+            cookie.load(cookie_header)
+        except Exception:
+            return None
+        morsel = cookie.get(DASHBOARD_SESSION_COOKIE)
+        if not morsel or not morsel.value:
+            return None
+        session_key = _session_digest(morsel.value)
+        row = _dashboard_sessions.get(session_key)
+        if not row or float(row.get("expires", 0)) <= time.time():
+            return None
+        claim = agent_bus.auth_subject_session_claim(self.bus_dir, "viewers", row.get("viewer", ""))
+        if not claim or claim.get("tokenHash") != row.get("tokenHash"):
+            _dashboard_sessions.pop(session_key, None)
+            return None
+        return row
+
     def do_GET(self) -> None:
         if not self._allow_host():
             return
@@ -194,8 +253,11 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 limit = 300
             # 최근 N건만 전송한다. 전체 로그는 파일에 둔다.
+            viewer_session = self._viewer_session()
+            raw_restricted = bool(viewer_session)
+            view_record = lambda row: agent_bus.record_for_dashboard(self.bus_dir, row, raw_restricted)
             all_msgs = agent_bus.live_messages(self.bus_dir)
-            messages = all_msgs[-limit:]
+            messages = [view_record(row) for row in all_msgs[-limit:]]
             shown = {m.get("id") for m in messages}
             acks = agent_bus.unique_acks([a for a in agent_bus.read_jsonl(ps["acks"]) if a.get("id") in shown])
             self._json(200, {
@@ -206,11 +268,17 @@ class Handler(BaseHTTPRequestHandler):
                 "messages_total": len(all_msgs),
                 "acks": acks,
                 "status": agent_bus.load_json(ps["status"], {"agents": {}}),
-                "stop": agent_bus.load_json(ps["stop"], None) if ps["stop"].exists() else None,
-                "tasks": agent_bus.fold_tasks(self.bus_dir),
-                "task_reports": agent_bus.task_report_rows(self.bus_dir, max_body_chars=160),
-                "tickets": agent_bus.fold_issues(self.bus_dir),
-                "issues": agent_bus.fold_issues(self.bus_dir),
+                "auth": {"agents": agent_bus.auth_rows(self.bus_dir), "viewers": agent_bus.viewer_auth_rows(self.bus_dir)},
+                "viewer": {"authenticated": raw_restricted, "name": viewer_session.get("viewer", "") if viewer_session else ""},
+                "stop": agent_bus.load_json(ps["stop"], None) if agent_bus.path_exists(ps["stop"]) else None,
+                "tasks": [view_record(row) for row in agent_bus.fold_tasks(self.bus_dir)],
+                "task_reports": agent_bus.task_report_rows(self.bus_dir, max_body_chars=160, raw_restricted=raw_restricted),
+                "tickets": [view_record(row) for row in agent_bus.fold_issues(self.bus_dir)],
+                "issues": [view_record(row) for row in agent_bus.fold_issues(self.bus_dir)],
+                "skills": agent_bus.skill_rows(self.bus_dir),
+                "bridge_profiles": agent_bus.bridge_profile_rows(self.bus_dir),
+                "bridges": agent_bus.bridge_dashboard_status_rows(self.bus_dir),
+                "bridge_gateways": agent_bus.bridge_gateway_rows(self.server.server_port),
                 "cards": agent_bus.load_cards(CARDS_DIR),
                 "task_states": agent_bus.TASK_STATES,
             })
@@ -223,13 +291,18 @@ class Handler(BaseHTTPRequestHandler):
                 limit = max(0, min(2000, int(q.get("limit", ["0"])[0])))
             except ValueError:
                 limit = 0
-            events = agent_bus.bus_events(
-                self.bus_dir,
-                types=agent_bus.parse_event_types(q.get("types", [""])[0]),
-                targets=agent_bus.parse_event_targets(q.get("target", [""])[0]),
-                after=q.get("after", [""])[0],
-                limit=limit,
-            )
+            viewer_session = self._viewer_session()
+            raw_restricted = bool(viewer_session)
+            events = [
+                agent_bus.event_for_dashboard(self.bus_dir, event, raw_restricted)
+                for event in agent_bus.bus_events(
+                    self.bus_dir,
+                    types=agent_bus.parse_event_types(q.get("types", [""])[0]),
+                    targets=agent_bus.parse_event_targets(q.get("target", [""])[0]),
+                    after=q.get("after", [""])[0],
+                    limit=limit,
+                )
+            ]
             self._json(200, {"version": agent_bus.EVENT_VERSION, "events": events})
         elif path.startswith("/static/"):
             self._file(STATIC_DIR, path[len("/static/"):])
@@ -252,32 +325,78 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         ps = agent_bus.paths(self.bus_dir)
-        if path == "/api/send":
+        if path == "/api/cli":
+            argv = data.get("argv")
+            if not isinstance(argv, list) or not all(isinstance(item, str) for item in argv):
+                self._json(400, {"error": "argv required"})
+                return
+            requested_bus = _argv_bus_dir(argv)
+            if requested_bus is None or requested_bus.resolve() != self.bus_dir.resolve():
+                self._json(403, {"error": "bus-dir mismatch"})
+                return
+            env = data.get("env") if isinstance(data.get("env"), dict) else {}
+            result = agent_bus.run_cli_in_capsule(argv, {str(k): str(v) for k, v in env.items() if k == "AGENTBUS_AGENT_TOKEN"})
+            self._json(200, result)
+        elif path == "/api/viewer-login":
+            viewer = agent_bus._clean_text(data.get("viewer"))
+            token = agent_bus._clean_text(data.get("token"))
+            if not viewer or not token:
+                self._json(400, {"error": "viewer and token required"})
+                return
+            if not agent_bus.viewer_can_read_restricted(self.bus_dir, viewer, token):
+                self._json(403, {"error": "invalid viewer token"})
+                return
+            claim = agent_bus.auth_subject_session_claim(self.bus_dir, "viewers", viewer)
+            max_age = agent_bus.auth_subject_session_ttl(self.bus_dir, "viewers", viewer, DASHBOARD_SESSION_TTL)
+            if not claim or max_age <= 0:
+                self._json(403, {"error": "viewer token expired"})
+                return
+            sid = secrets.token_urlsafe(32)
+            _dashboard_sessions[_session_digest(sid)] = {
+                "viewer": viewer,
+                "tokenHash": claim["tokenHash"],
+                "expires": time.time() + max_age,
+            }
+            self._json(200, {"viewer": viewer, "expiresIn": max_age}, {"Set-Cookie": _session_cookie(sid, max_age)})
+        elif path == "/api/viewer-logout":
+            session = self._viewer_session()
+            if session:
+                cookie = SimpleCookie()
+                cookie.load(self.headers.get("Cookie") or "")
+                morsel = cookie.get(DASHBOARD_SESSION_COOKIE)
+                if morsel:
+                    _dashboard_sessions.pop(_session_digest(morsel.value), None)
+            self._json(200, {"ok": True}, {"Set-Cookie": _session_cookie("", 0)})
+        elif path == "/api/send":
             subject = agent_bus._clean_text(data.get("subject"))
             body = agent_bus._clean_text(data.get("body"))
             if not body:
                 self._json(400, {"error": "body required"})
                 return
-            msg = agent_bus.make_message(
-                data.get("from") or "user",
-                data.get("to") or "all",
-                data.get("kind") or "note",
-                subject,
-                body,
-                data.get("refs") or [],
-                data.get("task_id") or "",
-                data.get("reply_to") or "",
-                data.get("sensitivity") or "",
-                data.get("retention") or "",
-            )
-            agent_bus.append_message(self.bus_dir, msg)
+            try:
+                msg = agent_bus.make_message(
+                    data.get("from") or "user",
+                    data.get("to") or "all",
+                    data.get("kind") or "note",
+                    subject,
+                    body,
+                    data.get("refs") or [],
+                    data.get("task_id") or "",
+                    data.get("reply_to") or "",
+                    data.get("sensitivity") or "",
+                    data.get("retention") or "",
+                )
+                agent_bus.append_message(self.bus_dir, msg)
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+                return
             self._json(200, {"id": msg["id"]})
         elif path == "/a2a/rpc":
             from . import a2a
 
             params = data.get("params") if isinstance(data.get("params"), dict) else {}
             try:
-                msg = a2a.inbound_message_to_bus(
+                msg, response = agent_bus.packet_receive_a2a_request(
                     self.bus_dir,
                     data,
                     params.get("tenant") or "all",
@@ -286,7 +405,7 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 self._json(200, a2a.error_response(data.get("id"), -32602, str(exc)))
                 return
-            self._json(200, a2a.inbound_success_response(data, msg))
+            self._json(200, response)
         elif path == "/api/message-delete":
             mid = agent_bus._clean_text(data.get("id"))
             if not mid:
@@ -303,15 +422,19 @@ class Handler(BaseHTTPRequestHandler):
             if not title:
                 self._json(400, {"error": "title required"})
                 return
-            tid = agent_bus.create_task(
-                self.bus_dir,
-                title,
-                data.get("by") or "user",
-                data.get("assign"),
-                data.get("id") or "",
-                data.get("sensitivity") or "",
-                data.get("retention") or "",
-            )
+            try:
+                tid = agent_bus.create_task(
+                    self.bus_dir,
+                    title,
+                    data.get("by") or "user",
+                    data.get("assign"),
+                    data.get("id") or "",
+                    data.get("sensitivity") or "",
+                    data.get("retention") or "",
+                )
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+                return
             self._json(200, {"task_id": tid})
         elif path == "/api/task-state":
             tid = agent_bus._clean_text(data.get("id"))
@@ -319,7 +442,11 @@ class Handler(BaseHTTPRequestHandler):
             if not tid or state not in agent_bus.TASK_STATES:
                 self._json(400, {"error": "valid id and state required"})
                 return
-            agent_bus.set_task_state(self.bus_dir, tid, state, data.get("by") or "user", data.get("note") or "")
+            try:
+                agent_bus.set_task_state(self.bus_dir, tid, state, data.get("by") or "user", data.get("note") or "")
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+                return
             self._json(200, {"ok": True})
         elif path == "/api/task-delete":
             tid = agent_bus._clean_text(data.get("id"))
@@ -372,7 +499,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             self._json(200, {"ok": True})
         elif path == "/api/clear-stop":
-            ps["stop"].unlink(missing_ok=True)
+            agent_bus.delete_path(ps["stop"])
             self._json(200, {"ok": True})
         elif path == "/api/agent-delete":
             name = agent_bus._clean_text(data.get("agent"))
@@ -398,6 +525,7 @@ def serve(bus_dir: Path, port: int = 8765, root: Path | None = None,
           cards_dir: Path | None = None) -> int:
     global FILE_INDEX_ROOT, CARDS_DIR
     agent_bus.ensure_bus(Path(bus_dir))
+    agent_bus.update_capsule_endpoint(Path(bus_dir), port)
     if root is not None:
         FILE_INDEX_ROOT = Path(root)
     if cards_dir is not None:

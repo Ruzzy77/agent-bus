@@ -1,6 +1,6 @@
 # agentbus.event.v1
 
-`agentbus events` exposes raw bus changes as JSON events. Adapters use the stream to wake agents, call webhooks, or map bus state to external protocols.
+`agentbus bridge events` exposes bus changes as JSON events with outbound-safe redaction. Bridge handlers use the stream to trigger agents, call webhooks, or map bus state to external protocols.
 
 ## Shape
 
@@ -8,10 +8,10 @@
 {
   "version": "agentbus.event.v1",
   "id": "messages:1:2026-06-15T00:00:00+00:00:abc123",
-  "cursor": "messages:1:2026-06-15T00:00:00+00:00:abc123",
+  "position": "messages:1:2026-06-15T00:00:00+00:00:abc123",
   "time": "2026-06-15T00:00:00+00:00",
   "type": "message.created",
-  "source": "messages.jsonl",
+  "source": "messages",
   "actor": "user",
   "target": "my-agent",
   "object": {"type": "message", "id": "abc123"},
@@ -22,24 +22,24 @@
 | Field | Meaning |
 | --- | --- |
 | `version` | Event contract version. |
-| `id`, `cursor` | Source log, line number, time, and object id. |
+| `id`, `position` | Source stream position, time, and object id. |
 | `type` | Normalized event type. Prefix filters such as `ticket.*` are accepted. |
-| `source` | Source JSONL file. |
+| `source` | Source capsule stream. |
 | `actor` | Sender, agent, or `by` field. |
 | `target` | Receiver, assignee, or empty string. |
 | `object` | Primary object touched by the event. |
-| `data` | Original source row. |
+| `data` | Source row projection. `restricted` content is redacted; `internal` content is redacted on bridge output paths. |
 
-`data` may include `sensitivity` and `retention`. External adapters check those fields before webhooks, SDK wakeups, or protocol transfer.
+`data` may include `sensitivity`, `retention`, and redaction metadata. Bridge handlers use those fields before webhooks, SDK bridge calls, or protocol transfer.
 
 ## Event types
 
 | Type | Source |
 | --- | --- |
-| `message.created`, `message.deleted`, `message.acked`, `message.delivered` | Message logs. |
-| `task.created`, `task.state`, `task.deleted` | Task log. |
-| `ticket.created`, `ticket.accepted`, `ticket.rejected` | Ticket log. |
+| `message.created`, `message.deleted`, `message.acked`, `message.delivered` | Message streams. |
+| `task.created`, `task.state`, `task.deleted` | Task stream. |
+| `ticket.created`, `ticket.accepted`, `ticket.rejected` | Ticket stream. |
 
-## Adapter rule
+## Bridge handler rule
 
-The event is a wake signal. The adapter uses it as a prompt to reread the bus or referenced files before acting.
+The event is a trigger signal. The bridge handler reloads the bus or referenced files before acting.

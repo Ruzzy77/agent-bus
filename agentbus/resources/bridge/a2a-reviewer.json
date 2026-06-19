@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "bridge-profile.v1",
+  "name": "a2a-reviewer",
+  "event": "message.created",
+  "matcher": {
+    "target": "reviewer"
+  },
+  "handler": {
+    "type": "http",
+    "protocol": "a2a",
+    "url": "$A2A_ENDPOINT"
+  },
+  "envs": ["A2A_ENDPOINT"],
+  "intervalSeconds": 1,
+  "maxSeconds": 0,
+  "timeoutSeconds": 60
+}

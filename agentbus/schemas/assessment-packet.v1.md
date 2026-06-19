@@ -11,7 +11,7 @@ The packet uses neutral external terms and avoids product names or project-coine
   "schemaVersion": "assessment-packet.v1",
   "packetId": "pkt-...",
   "createdAt": "2026-06-15T00:00:00+00:00",
-  "sensitivity": "confidential",
+  "sensitivity": "restricted",
   "retention": "no_archive",
   "asset": {"assetId": "urn:example:asset:line-7-press-2"},
   "aasEnvironment": {
@@ -29,15 +29,15 @@ The packet uses neutral external terms and avoids product names or project-coine
 | `OperationalData` | Manufacturing, process, sensor, or work data supplied by `--data`. |
 | `AssessmentRecords` | Agent participants, lead synthesis, communication records, and review items. |
 | `WorkItems` | Work item lifecycle state and assignment. |
-| `Traceability` | Asset id, data source, event cursors, and change events. |
+| `Traceability` | Asset id, data source, event positions, and change events. |
 
 `OperationalData` and `AssessmentRecords` stay in the same packet when the receiver needs an auditable data-and-judgment bundle.
 
-`sensitivity` and `retention` are optional handling signals. Outbound adapters use them to decide external transfer handling.
+`sensitivity` and `retention` are optional handling signals. `internal` sources are projected with redaction for external packet use, and `restricted` packets are blocked by `packet send`.
 
 ## Assessment summary
 
-`AssessmentRecords.assessmentSummary` is always present. Supplying `--assessment-summary <json>` fills it with a lead-agent synthesis built from bus reports, evidence references, disagreements, and remaining decisions. agent-bus preserves and projects that synthesis; the lead agent owns the final judgment, user alignment, user-facing report, and follow-up interaction. `aas-packet` accepts object-shaped consensus entries with required fields, and `aas-packet-check` checks the projected AAS shape for the same minimum fields.
+`AssessmentRecords.assessmentSummary` is always present. Supplying `--assessment-summary <json>` fills it with a lead-agent synthesis built from bus reports, evidence references, disagreements, and remaining decisions. agent-bus preserves and projects that synthesis; the lead agent owns the final judgment, user alignment, user-facing report, and follow-up interaction. `packet data --protocol aas` accepts object-shaped consensus entries with required fields, and `packet data --protocol aas --file` checks the projected AAS shape for the same minimum fields.
 
 | Field | Content |
 | --- | --- |
@@ -64,12 +64,12 @@ The packet uses neutral external terms and avoids product names or project-coine
 ## Check
 
 ```bash
-agentbus aas-packet \
-  --data agentbus/examples/aas/operational-data.sample.json \
+agentbus packet data --protocol aas \
+  --data agentbus/resources/aas/operational-data.sample.json \
   --asset-id urn:example:asset:line-7-press-2 \
-  --assessment-summary agentbus/examples/aas/assessment-summary.sample.json \
+  --assessment-summary agentbus/resources/aas/assessment-summary.sample.json \
   --out packet.json
-agentbus aas-packet-check --file packet.json
+agentbus packet data --protocol aas --file packet.json
 ```
 
 The check verifies the packet version, asset id, AAS environment shape, required submodels, assessment summary fields, and required record lists. AAS conformance testing belongs to a dedicated AAS validator.

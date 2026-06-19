@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "bridge-profile.v1",
+  "name": "claude-runner-inbox",
+  "event": "message.created",
+  "matcher": {
+    "target": "claude",
+    "kind": ["request"]
+  },
+  "handler": {
+    "type": "agent",
+    "provider": "claude",
+    "args": []
+  },
+  "intervalSeconds": 5,
+  "maxSeconds": 0,
+  "timeoutSeconds": 0,
+  "markDelivered": true
+}

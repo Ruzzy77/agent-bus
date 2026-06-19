@@ -1,0 +1,26 @@
+{"assign": ["codex"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-review", "time": "2026-06-17T00:01:00.000+00:00", "title": "Review runner docs"}
+{"by": "codex", "event": "state", "note": "checking README, workflow skill, and smoke coverage", "state": "working", "task_id": "t-demo-review", "time": "2026-06-17T00:04:00.000+00:00"}
+{"assign": ["claude"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-ops", "time": "2026-06-17T00:02:00.000+00:00", "title": "Prepare field assessment packet"}
+{"by": "claude", "event": "state", "note": "operator must confirm external transfer before sending restricted data", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-17T00:07:00.000+00:00"}
+{"assign": ["codex"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-security", "time": "2026-06-17T00:03:00.000+00:00", "title": "Check bridge sensitive-data guardrail"}
+{"by": "codex", "event": "state", "note": "blocked restricted runner packet and API mock passed", "state": "completed", "task_id": "t-demo-security", "time": "2026-06-17T00:09:00.000+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-ops", "time": "2026-06-18T15:29:09.301+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "canceled", "task_id": "t-demo-ops", "time": "2026-06-18T15:29:14.659+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-ops", "time": "2026-06-18T15:29:16.734+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-review", "time": "2026-06-18T15:30:17.244+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-review", "time": "2026-06-18T15:35:40.829+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "submitted", "task_id": "t-demo-security", "time": "2026-06-18T15:37:45.162+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-security", "time": "2026-06-18T15:37:47.870+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "completed", "task_id": "t-demo-security", "time": "2026-06-18T15:37:54.344+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:28.695+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "submitted", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:31.261+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:33.611+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "completed", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:36.063+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:38.878+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "completed", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:41.978+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "canceled", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:45.795+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:48.736+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:50.311+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:53.220+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-19T03:13:49.268+00:00"}
+{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-review", "time": "2026-06-19T03:13:53.609+00:00"}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "bridge-profile.v1",
+  "name": "claude-inbox",
+  "event": "message.created",
+  "matcher": {
+    "target": "claude",
+    "kind": ["request", "report", "note"]
+  },
+  "handler": {
+    "type": "monitor"
+  },
+  "intervalSeconds": 30,
+  "maxSeconds": 1500
+}

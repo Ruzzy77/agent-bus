@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "bridge-profile.v1",
+  "name": "openai-compatible-messages",
+  "event": "message.created",
+  "matcher": {},
+  "handler": {
+    "type": "openai-compatible",
+    "endpoint": "$OPENAI_COMPAT_ENDPOINT",
+    "model": "$OPENAI_COMPAT_MODEL",
+    "apiKey": "$OPENAI_COMPAT_API_KEY",
+    "responseTo": "$OPENAI_COMPAT_RESPONSE_TO"
+  },
+  "envs": [
+    "OPENAI_COMPAT_ENDPOINT",
+    "OPENAI_COMPAT_MODEL",
+    "OPENAI_COMPAT_API_KEY",
+    "OPENAI_COMPAT_RESPONSE_TO"
+  ],
+  "intervalSeconds": 1,
+  "maxSeconds": 0,
+  "timeoutSeconds": 120
+}

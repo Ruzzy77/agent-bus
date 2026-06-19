@@ -44,6 +44,14 @@
         <input type="range" class="set-slider" id="size-slider" min="0" max="4" step="1" value="1" aria-label="텍스트 크기">
         <span class="set-size-a lg">A</span>
       </div>
+      <div class="set-sec">보안 보기</div>
+      <div class="set-auth">
+        <span class="set-status" id="viewer-auth-state">꺼짐</span>
+        <button class="set-action" id="viewer-authbtn" type="button" aria-label="사용자 인증">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 9V7A5 5 0 0 0 7 7v2"/><rect x="4" y="9" width="16" height="12" rx="2"/><path d="M12 14v3"/></svg>
+          <span class="set-label">인증</span>
+        </button>
+      </div>
       <div class="set-sec">세션 메시지</div>
       <div class="set-actions">
         <button class="set-action" id="rotatebtn" type="button" aria-label="메시지 보관">
@@ -126,51 +134,89 @@
     <div id="timeline"></div>
   </div>
   <aside id="side">
-    <section>
-      <div class="panel-title">티켓
-        <span class="pt-actions">
-          <button class="iconbtn sm" id="newticket" data-tip="새 티켓" aria-label="새 티켓">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          </button>
-        </span>
-      </div>
-      <form id="newticket-form" class="newtask-form" aria-hidden="true">
-        <input id="newticket-title" placeholder="검토할 티켓 한 줄 · Enter 추가" autocomplete="off">
-        <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
+    <div class="side-tabbar">
+      <div class="side-tabs" id="side-tabs" role="tablist" aria-label="사이드 패널">
+        <span class="side-tab-thumb" aria-hidden="true"></span>
+        <button id="side-tab-work" class="on" type="button" role="tab" aria-selected="true" aria-controls="side-work" aria-label="작업">
+          <svg class="side-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h10M9 12h10M9 18h10"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+          <span class="side-tab-label">작업</span>
         </button>
-      </form>
-      <div id="tickets"></div>
-    </section>
-    <section>
-      <div class="panel-title">작업
-        <span class="pt-actions">
-          <button class="linkbtn" id="clear-done" type="button" hidden>완료 지우기</button>
-          <button class="iconbtn sm" id="newtask" data-tip="새 작업" aria-label="새 작업">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          </button>
-        </span>
-      </div>
-      <form id="newtask-form" class="newtask-form" aria-hidden="true">
-        <input id="newtask-title" placeholder="작업 제목 입력 · Enter 추가" autocomplete="off">
-        <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
+        <button id="side-tab-agent" type="button" role="tab" aria-selected="false" aria-controls="side-agent" aria-label="에이전트">
+          <svg class="side-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><circle cx="7" cy="17" r="2.6"/><circle cx="17" cy="17" r="2.6"/><path d="M10.6 9.7 8.2 14.7M13.4 9.7l2.4 5M9.6 17h4.8"/></svg>
+          <span class="side-tab-label">에이전트</span>
         </button>
-      </form>
-      <div id="tasks"></div>
-    </section>
-    <section>
-      <div class="panel-title">완료</div>
-      <div id="completed"></div>
-    </section>
-    <section>
-      <div class="panel-title">에이전트</div>
-      <div id="agents"></div>
-    </section>
+        <button id="side-tab-bridge" type="button" role="tab" aria-selected="false" aria-controls="side-bridge" aria-label="Bridge">
+          <svg class="side-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5V9"/><path d="M15 4.5V9"/><path d="M7 9h10v4.5a5 5 0 0 1-10 0V9z"/><path d="M12 18.5V21"/></svg>
+          <span class="side-tab-label">Bridge</span>
+        </button>
+      </div>
+    </div>
+    <div id="side-scroll" class="side-scroll">
+      <div id="side-work" class="side-tab-panel" role="tabpanel" aria-labelledby="side-tab-work">
+        <section>
+          <div class="panel-title">티켓
+            <span class="pt-actions">
+              <button class="iconbtn sm" id="newticket" data-tip="새 티켓" aria-label="새 티켓">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </span>
+          </div>
+          <form id="newticket-form" class="newtask-form" aria-hidden="true">
+            <input id="newticket-title" placeholder="검토할 티켓 한 줄 · Enter 추가" autocomplete="off">
+            <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
+            </button>
+          </form>
+          <div id="tickets"></div>
+        </section>
+        <section>
+          <div class="panel-title">작업
+            <span class="pt-actions">
+              <button class="linkbtn" id="clear-done" type="button" hidden>완료 지우기</button>
+              <button class="iconbtn sm" id="newtask" data-tip="새 작업" aria-label="새 작업">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </span>
+          </div>
+          <form id="newtask-form" class="newtask-form" aria-hidden="true">
+            <input id="newtask-title" placeholder="작업 제목 입력 · Enter 추가" autocomplete="off">
+            <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
+            </button>
+          </form>
+          <div id="tasks"></div>
+        </section>
+        <section>
+          <div class="panel-title">완료</div>
+          <div id="completed"></div>
+        </section>
+      </div>
+      <div id="side-agent" class="side-tab-panel" role="tabpanel" aria-labelledby="side-tab-agent" hidden>
+        <section>
+          <div class="panel-title">에이전트</div>
+          <div id="agents"></div>
+        </section>
+        <section id="skills-section" hidden>
+          <div class="panel-title">스킬</div>
+          <div id="skills"></div>
+        </section>
+      </div>
+      <div id="side-bridge" class="side-tab-panel" role="tabpanel" aria-labelledby="side-tab-bridge" hidden>
+        <section>
+          <div class="panel-title">Profiles <span class="panel-subtitle">local configs</span></div>
+          <div id="bridge-profiles"></div>
+        </section>
+        <section>
+          <div class="panel-title">Gateways <span class="panel-subtitle">serve endpoints</span></div>
+          <div id="bridge-gateways"></div>
+        </section>
+      </div>
+    </div>
   </aside>
 </main>
 <script src="/vendor/katex/katex.min.js"></script>
 <script src="/vendor/katex/auto-render.min.js"></script>
+<script src="/static/dashboard-primitives.js"></script>
 <script src="/static/dashboard.js"></script>
 </body>
 </html>

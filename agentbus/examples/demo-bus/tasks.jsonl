@@ -1,6 +1,0 @@
-{"assign": ["codex"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-review", "time": "2026-06-17T00:01:00.000+00:00", "title": "Review runner docs"}
-{"by": "codex", "event": "state", "note": "checking README, workflow skill, and smoke coverage", "state": "working", "task_id": "t-demo-review", "time": "2026-06-17T00:04:00.000+00:00"}
-{"assign": ["claude"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-ops", "time": "2026-06-17T00:02:00.000+00:00", "title": "Prepare field assessment packet"}
-{"by": "claude", "event": "state", "note": "operator must confirm external transfer before sending restricted data", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-17T00:07:00.000+00:00"}
-{"assign": ["codex"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-security", "time": "2026-06-17T00:03:00.000+00:00", "title": "Check adapter sensitive-data guardrail"}
-{"by": "codex", "event": "state", "note": "blocked confidential runner packet and API mock passed", "state": "completed", "task_id": "t-demo-security", "time": "2026-06-17T00:09:00.000+00:00"}

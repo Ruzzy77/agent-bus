@@ -45,8 +45,11 @@ def _text_part(text: object) -> dict[str, Any]:
 
 
 def _data_part(data: Any, source: str = "") -> dict[str, Any]:
+    level = core.effective_sensitivity(data) if isinstance(data, dict) else "normal"
+    retention = core.effective_retention(data) if isinstance(data, dict) else "normal"
+    projected = core.redact_payload(data, level) if level in core.EXTERNAL_RAW_BLOCK_LEVELS else data
     part: dict[str, Any] = {
-        "data": data,
+        "data": projected,
         "mediaType": "application/json",
     }
     metadata: dict[str, Any] = {}
@@ -55,7 +58,9 @@ def _data_part(data: Any, source: str = "") -> dict[str, Any]:
     if isinstance(data, dict) and data.get("schemaVersion"):
         metadata["schemaVersion"] = data["schemaVersion"]
     if isinstance(data, dict):
-        metadata.update(core.security_fields(core.effective_sensitivity(data), core.effective_retention(data)))
+        metadata.update(core.security_fields(level, retention))
+    if isinstance(projected, dict) and projected.get("redacted"):
+        metadata["redacted"] = True
     if metadata:
         part["metadata"] = metadata
     return part
@@ -72,6 +77,9 @@ def _message_metadata(row: dict[str, Any]) -> dict[str, Any]:
         "evidenceReferences": row.get("refs") or [],
     }
     metadata.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    if row.get("redacted"):
+        metadata["redacted"] = True
+        metadata["redactedFields"] = row.get("redactedFields") or []
     reply = row.get("reply_to")
     if reply:
         metadata["replyTo"] = reply
@@ -88,6 +96,7 @@ def send_message_request(
     accepted_output_modes: list[str] | None = None,
     return_immediately: bool = True,
 ) -> dict[str, Any]:
+    row = core.redact_record(row, "external")
     role = core._choice(role, "role", list(A2A_ROLES))
     parts = [_text_part(row.get("body", ""))]
     for data, source in data_parts or []:
@@ -343,9 +352,7 @@ def header_pairs(values: object) -> dict[str, str]:
     return headers
 
 
-def read_token(token: str = "", token_env: str = "") -> str:
-    if token:
-        return token
+def read_token(token_env: str = "") -> str:
     if token_env:
         value = os.environ.get(token_env, "")
         if not value:
@@ -426,7 +433,7 @@ def post_rpc(
     return {"ok": 200 <= status < 300, "status": status, "headers": response_headers, "body": text, "response": parsed, "error": "" if 200 <= status < 300 else f"HTTP {status}"}
 
 
-def log_adapter_failure(path: Path | None, record: dict[str, Any]) -> None:
+def log_bridge_failure(path: Path | None, record: dict[str, Any]) -> None:
     if path:
         core.append_jsonl(path, record)
 

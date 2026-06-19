@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "bridge-profile.v1",
+  "name": "codex-runner-inbox",
+  "event": "message.created",
+  "matcher": {
+    "target": "codex",
+    "kind": ["request"]
+  },
+  "handler": {
+    "type": "agent",
+    "provider": "codex",
+    "args": []
+  },
+  "intervalSeconds": 5,
+  "maxSeconds": 0,
+  "timeoutSeconds": 0,
+  "markDelivered": true
+}

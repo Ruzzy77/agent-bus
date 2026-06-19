@@ -5,20 +5,20 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-bus"
 version = "0.1.0"
-description = "Runtime-neutral local coordination and provenance for multi-agent work."
+description = "Local coordination and provenance for multi-agent work."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Ruzzy77" }]
-keywords = ["agents", "coordination", "message-bus", "dashboard", "llm", "stdlib"]
+keywords = ["agents", "coordination", "message-bus", "dashboard", "llm"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "Topic :: Software Development",
 ]
-dependencies = []
+dependencies = ["cryptography>=42"]
 
 [project.scripts]
 agentbus = "agentbus.bus:main"
@@ -34,12 +34,13 @@ agentbus = [
   "cards/*.md",
   "skills/*/*.md",
   "schemas/*.md",
-  "examples/adapters/*",
-  "examples/demo-bus/*",
-  "examples/aas/*.json",
-  "examples/smoke/*.sh",
-  "examples/smoke/*.js",
-  "examples/wakeup/*.json",
+  "resources/demo-bus/*",
+  "resources/demo-bus/skills/*/*.md",
+  "resources/demo-bus/skills/*/*.jsonl",
+  "resources/aas/*.json",
+  "resources/smoke/*.sh",
+  "resources/smoke/*.js",
+  "resources/bridge/*.json",
   "static/*",
   "vendor/katex/*",
   "vendor/katex/fonts/*",

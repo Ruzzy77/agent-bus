@@ -1,17 +1,18 @@
 # a2a-rpc.v1
 
-`a2a-rpc.v1` is the A2A-facing projection of raw bus messages. It creates and checks A2A 1.0 `SendMessage` JSON-RPC request bodies, sends them with stdlib HTTP, and can record responses back to the raw bus.
+`a2a-rpc.v1` is the A2A-facing projection of bus messages. It creates and checks A2A 1.0 `SendMessage` JSON-RPC request bodies, sends them over HTTP, and can record responses back to the bus.
 
 Public hosting, OAuth, streaming, task polling, and push delivery stay in the surrounding A2A integration layer.
 
 ## Local commands
 
 ```bash
-agentbus a2a-card --agent reviewer --url http://127.0.0.1:8765/a2a/rpc --out agent-card.json
-agentbus a2a-card-check --file agent-card.json
-agentbus a2a-rpc --message-id <id> --data packet.json --out request.json
-agentbus a2a-rpc-check --file request.json
-agentbus a2a-post --file request.json --endpoint https://example.com/a2a/rpc --token-env A2A_TOKEN
+agentbus packet transport --protocol a2a --artifact card --agent reviewer --url http://127.0.0.1:8765/a2a/rpc --out agent-card.json
+agentbus packet transport --protocol a2a --artifact card --file agent-card.json
+agentbus packet transport --protocol a2a --artifact message --message-id <id> --data packet.json --out request.json
+agentbus packet transport --protocol a2a --artifact message --file request.json
+agentbus packet send --protocol a2a --file request.json --endpoint https://example.com/a2a/rpc --token-env A2A_TOKEN
+agentbus packet receive --protocol a2a --file request.json
 ```
 
 ## Mapping
@@ -28,7 +29,7 @@ agentbus a2a-post --file request.json --endpoint https://example.com/a2a/rpc --t
 
 Structured JSON such as `assessment-packet.v1` stays in the same `SendMessage` request as a `data` part.
 
-`a2a-post` requires `--allow-sensitive` for `confidential` and `restricted` requests.
+`packet send --protocol a2a` blocks `restricted` requests. `internal` sources can be sent only as redacted projections.
 
 ## HTTP defaults
 
@@ -43,12 +44,12 @@ Structured JSON such as `assessment-packet.v1` stays in the same `SendMessage` r
 
 ## Local inbound endpoints
 
-`agentbus serve` exposes local test endpoints on 127.0.0.1 for development.
+`agentbus bus serve` exposes local test endpoints on 127.0.0.1 for development. Its `/a2a/rpc` handler uses the same receive path as `agentbus packet receive --protocol a2a`.
 
 | Path | Meaning |
 | --- | --- |
 | `/.well-known/agent-card.json?agent=<id>` | Project a local card as an A2A Agent Card. |
-| `/a2a/rpc` | Accept `SendMessage` and append it to the raw bus. |
+| `/a2a/rpc` | Accept `SendMessage` and append it to the bus. |
 
 These endpoints support local testing and dashboard integration. Public A2A serving belongs to an external host.
 
@@ -56,5 +57,5 @@ These endpoints support local testing and dashboard integration. Public A2A serv
 
 | Command | Checks |
 | --- | --- |
-| `a2a-card-check` | Agent Card required fields, interface, modes, skills. |
-| `a2a-rpc-check` | JSON-RPC envelope, `SendMessage`, message id, role, non-empty parts, Part one-of rule. |
+| `packet transport --protocol a2a --artifact card --file` | Agent Card required fields, interface, modes, skills. |
+| `packet transport --protocol a2a --artifact message --file` | JSON-RPC envelope, `SendMessage`, message id, role, non-empty parts, Part one-of rule. |

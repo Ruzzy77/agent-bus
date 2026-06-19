@@ -1,18 +1,8 @@
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const cls = s => String(s ?? "").replace(/[^a-zA-Z0-9_-]/g, "_");
-const byId = id => document.getElementById(id);
-const fmtTime = iso => {
-  const d = new Date(iso);
-  if (isNaN(d)) return esc(iso);
-  const now = new Date();
-  const t = d.toLocaleTimeString("ko-KR", {hour:"numeric", minute:"2-digit"});
-  if (d.toDateString() === now.toDateString()) return t;
-  const sameYear = d.getFullYear() === now.getFullYear();
-  const date = d.toLocaleDateString("ko-KR",
-    sameYear ? {month:"numeric", day:"numeric"} : {year:"numeric", month:"numeric", day:"numeric"});
-  return date + " " + t;
-};
-const fmtAge = sec => sec < 90 ? "방금" : sec < 5400 ? Math.round(sec/60) + "분 전" : Math.round(sec/3600) + "시간 전";
+const {
+  esc, cls, byId, fmtTime, fmtAge, fmtDur, fmtCompactCount,
+  setTip, idPill, healthMark, setRefRoot, splitRefs, renderRefsExpander, securityMark,
+  ICON_REPLY, ICON_EMPTY, ICON_COPY, ICON_COPY_DONE, ICON_TRASH, ICON_SEND, ICON_CHECK, ICON_DBLCHECK, ICON_X, ICON_UNLOCK,
+} = window.AgentBusDashboardPrimitives;
 
 function fitProjectBadge() {
   const header = document.querySelector("header");
@@ -22,41 +12,18 @@ function fitProjectBadge() {
   if (header.scrollWidth > header.clientWidth + 1) proj.classList.add("project-hidden");
 }
 
-// ID pill 아이콘. 같은 종류의 식별자는 같은 렌더러를 통해 표시한다.
-const ICON_TASK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>`;
-const ICON_REPLY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7l-5 5 5 5"/><path d="M4 12h11a5 5 0 0 1 5 5v1"/></svg>`;
-const ICON_TICKET = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V9z"/><path d="M9 7v12"/></svg>`;
-const ICON_MESSAGE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"/></svg>`;
-const ICON_EMPTY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.3a8 8 0 0 1-8.6 8 8.7 8.7 0 0 1-3.6-.8L3.5 20l1.5-4.8a8 8 0 0 1-.8-3.6 8 8 0 0 1 8-7.6 8 8 0 0 1 8.3 7.3z"/></svg>`;
-const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>`;
-const ICON_COPY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>`;
-const ICON_COPY_DONE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4L19 7"/></svg>`;
-const ICON_TRASH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>`;
-// ack 체크 (단일 / 전체확인 더블체크)
-const ICON_CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4L19 6.5"/></svg>`;
-const ICON_DBLCHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12.5l4 4L15 6.5"/><path d="M9.5 12.5l.4.4M13 16.5L22.5 6.5"/></svg>`;
-
 // 펼친 메시지 상태를 유지한다.
 const expanded = new Set();
 function onToggle(id, open) { if (open) expanded.add(id); else expanded.delete(id); }
 let replyOpenId = null, replyDraft = "";
 
 let AGENT_NAMES = [];
+let AUTH_AGENT_NAMES = new Set();
+let VIEWER_AUTH = {authenticated:false, name:""};
 let RECIPIENT_NAMES = [];
 let RECIPIENT_OPTIONS = [];
 
-// 참조 경로는 작업 루트를 줄이고 파일명을 강조한다.
 let STATE_ROOT = "";
-function splitRefs(refs = []) {
-  return refs.flatMap(r => String(r).split(",")).map(s => s.trim()).filter(Boolean);
-}
-function renderRef(p) {
-  let s = p.trim();
-  if (STATE_ROOT && s.startsWith(STATE_ROOT + "/")) s = s.slice(STATE_ROOT.length + 1);
-  const m = s.match(/^([\w./-]+\/)(.*)$/);
-  const dir = m ? m[1] : "", base = m ? m[2] : s;
-  return `<span class="ref"><span class="dir">${esc(dir)}</span><span class="base">${esc(base)}</span></span>`;
-}
 
 function renderAcks(ackers, sender) {
   if (!ackers.length) return "";
@@ -69,31 +36,6 @@ function renderAcks(ackers, sender) {
   if (!hidden.length) return shown;
   const pop = hidden.map(a => `<span>${ICON_CHECK}${esc(a)}</span>`).join("");
   return shown + `<span class="ackchip ackmore" tabindex="0">+${hidden.length}<span class="ackmore-pop">${pop}</span></span>`;
-}
-
-function securityChip(row) {
-  const level = String(row.sensitivity || "");
-  if (!level) return "";
-  return `<span class="chip security ${cls(level)}">${ICON_LOCK}<span>${esc(level)}</span></span>`;
-}
-
-const ID_PILL_ICONS = {task: ICON_TASK, reply: ICON_REPLY, ticket: ICON_TICKET, issue: ICON_TICKET, message: ICON_MESSAGE, id: ICON_MESSAGE};
-function attrString(attrs = {}) {
-  return Object.entries(attrs)
-    .filter(([, value]) => value !== undefined && value !== null && value !== "")
-    .map(([key, value]) => ` ${key}="${esc(value)}"`)
-    .join("");
-}
-function setTip(el, text) {
-  el.dataset.tip = text;
-  el.removeAttribute("title");
-}
-function idPill(kind, id, attrs = {}, extraClass = "") {
-  if (!id) return "";
-  const safeKind = cls(kind || "id");
-  const classes = ["chip", "idpill", `idpill-${safeKind}`, extraClass].filter(Boolean).join(" ");
-  const icon = ID_PILL_ICONS[kind] || ID_PILL_ICONS.id;
-  return `<span class="${classes}" data-id-kind="${esc(kind || "id")}"${attrString(attrs)}>${icon}<span class="idpill-text">${esc(id)}</span></span>`;
 }
 
 function splitMdTableRow(line) {
@@ -288,8 +230,7 @@ function renderStopBanner(stop) {
 }
 
 function renderMessageRefs(refs = []) {
-  const html = splitRefs(refs).map(renderRef).join("");
-  return html ? `<div class="refs">${html}</div>` : "";
+  return renderRefsExpander(refs);
 }
 function renderMessageMeta(m) {
   const metaBits = [idPill("message", m.id, {"data-message": m.id})];
@@ -325,7 +266,7 @@ function renderReplyBox(m, canReply) {
   return `<div class="reply-box" data-to="${esc(m.from)}" data-reply="${esc(m.id)}">
     <div class="reply-row">
       <input class="reply-in" type="text" placeholder="${esc(m.from)}에게 답장…">
-      <button class="reply-go" type="button">보내기</button>
+      <button class="iconbtn send reply-go" type="button" data-tip="보내기" aria-label="보내기">${ICON_SEND}</button>
     </div>
     <div class="mention-menu"></div>
   </div>`;
@@ -335,11 +276,11 @@ function renderMsg(m, acks) {
   const ackers = acks[m.id] || [];
   const canReply = m.from && m.from !== "user";
   return `<div class="card msg" data-id="${esc(m.id)}">
-    <span class="msg-actions">${renderMessageActions(m, canReply)}</span>
+    <span class="msg-actions inline-actions">${renderMessageActions(m, canReply)}</span>
     <div class="head">
       <span class="route">${esc(m.from)} → ${esc(m.to)}</span>
-      <span class="chip kind ${cls(m.kind)}">${esc(m.kind)}</span>
-      ${securityChip(m)}
+      <span class="tag kind ${cls(m.kind)}">${esc(m.kind)}</span>
+      ${securityMark(m)}
       <span>${fmtTime(m.time)}</span>
       ${renderAcks(ackers, m.from)}
     </div>
@@ -350,17 +291,89 @@ function renderMsg(m, acks) {
 
 let TASK_STATES = [];
 let openTaskDD = null;
-const PANEL_LIMIT = {tasks: 3, tickets: 3, completed: 3, agents: 3};
-const panelExpanded = {tasks: false, tickets: false, completed: false, agents: false};
+const PANEL_LIMIT = {tasks: 3, tickets: 3, completed: 3, skills: 3, agents: 3, bridgeProfiles: 3, bridgeGateways: 3};
+const panelExpanded = {tasks: false, tickets: false, completed: false, skills: false, agents: false, bridgeProfiles: false, bridgeGateways: false};
+const SIDE_TABS = ["work", "agent", "bridge"];
+const storedSideTab = typeof localStorage !== "undefined" ? localStorage.getItem("sideTab") : "";
+let sideTab = SIDE_TABS.includes(storedSideTab) ? storedSideTab : "work";
 const taskTextOpen = new Set();
 const STATE_LABEL = {submitted:"대기", working:"진행 중", input_required:"확인 필요",
                      completed:"완료", failed:"오류", canceled:"취소"};
+const SKILL_EVIDENCE_LABEL = {grounding:"근거", check:"확인", gap:"빈틈", risk:"위험"};
+function skillHealth(s) {
+  if (s.state === "active" && !(s.warnings || []).length) return "ok";
+  if (s.state === "invalid" || s.state === "broken") return "problem";
+  return "warning";
+}
+function bridgeHealth(state) {
+  if (state === "failure" || state === "invalid") return "problem";
+  if (state === "needs_config" || state === "unknown") return "warning";
+  return "ok";
+}
+function agentHealth(a) {
+  if (a.state === "error") return "problem";
+  if (!a.heartbeat) return "warning";
+  return "ok";
+}
+const HEALTH_LABEL = {ok:"정상", warning:"주의", problem:"오류"};
+let sideTabAnimTimer = null;
+let sideTabSyncTimer = null;
+function moveSideTabThumb(animate = false) {
+  animate = animate === true;
+  const tabs = byId("side-tabs");
+  const thumb = tabs?.querySelector(".side-tab-thumb");
+  const on = tabs?.querySelector("button.on");
+  if (!tabs || !thumb || !on) return;
+  const tabsWidth = tabs.getBoundingClientRect().width;
+  if (tabsWidth < 80 || on.offsetWidth < 40) return;
+  clearTimeout(sideTabAnimTimer);
+  tabs.classList.toggle("side-tabs-animate", animate);
+  if (animate) void thumb.offsetWidth;
+  thumb.style.width = on.offsetWidth + "px";
+  thumb.style.transform = "translateX(" + on.offsetLeft + "px)";
+  if (animate) sideTabAnimTimer = setTimeout(() => tabs.classList.remove("side-tabs-animate"), 280);
+}
+function syncSideTabThumbAfterLayout() {
+  clearTimeout(sideTabSyncTimer);
+  requestAnimationFrame(() => {
+    moveSideTabThumb(false);
+    requestAnimationFrame(() => moveSideTabThumb(false));
+  });
+  sideTabSyncTimer = setTimeout(() => moveSideTabThumb(false), 320);
+}
+function updateViewerAuthUi(viewer = {}) {
+  VIEWER_AUTH = {authenticated:!!viewer.authenticated, name:String(viewer.name || "")};
+  const state = byId("viewer-auth-state");
+  const btn = byId("viewer-authbtn");
+  if (!state || !btn) return;
+  state.innerHTML = VIEWER_AUTH.authenticated
+    ? `<span class="code-pill">${esc(VIEWER_AUTH.name || "사용자")}</span>`
+    : "꺼짐";
+  state.classList.toggle("on", VIEWER_AUTH.authenticated);
+  btn.classList.toggle("on", VIEWER_AUTH.authenticated);
+  btn.setAttribute("aria-label", VIEWER_AUTH.authenticated ? "보안 보기 로그아웃" : "사용자 인증");
+  const label = btn.querySelector(".set-label");
+  if (label) label.textContent = VIEWER_AUTH.authenticated ? "로그아웃" : "인증";
+}
+
+function setSideTab(tab, persist = true, animate = false) {
+  sideTab = SIDE_TABS.includes(tab) ? tab : "work";
+  if (persist && typeof localStorage !== "undefined") localStorage.setItem("sideTab", sideTab);
+  for (const name of SIDE_TABS) {
+    const on = sideTab === name;
+    const btn = byId(`side-tab-${name}`);
+    const panel = byId(`side-${name}`);
+    if (btn) {
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    }
+    if (panel) panel.hidden = !on;
+  }
+  moveSideTabThumb(animate);
+}
 function renderTicket(ticket) {
   const id = ticket.issue_id || ticket.ticket_id;
-  const refs = splitRefs(ticket.refs || []);
-  const refsHtml = refs.length
-    ? `<div class="todo-desc">${refs.map(renderRef).join("")}</div>`
-    : "";
+  const refsHtml = renderRefsExpander(ticket.refs || []);
   return `<div class="todo ticket" data-ticket="${esc(id)}">
     <span class="todo-mark submitted"></span>
     <div class="todo-body">
@@ -369,16 +382,16 @@ function renderTicket(ticket) {
       ${refsHtml}
       <div class="todo-meta">
         ${idPill(ticket.issue_id ? "issue" : "ticket", id, {"data-ticket": id}, "idpill-compact")}
-        ${securityChip(ticket)}
+        ${securityMark(ticket)}
         <span>${fmtTime(ticket.created_at)}</span>
       </div>
     </div>
-    <div class="todo-actions">
-      <button type="button" class="todo-run" data-tip="진행" aria-label="진행" data-accept-ticket="${esc(id)}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
+    <div class="todo-actions inline-actions">
+      <button type="button" class="msg-act todo-run" data-tip="진행" aria-label="진행" data-accept-ticket="${esc(id)}">
+        ${ICON_CHECK}
       </button>
-      <button type="button" class="todo-del" data-tip="삭제" aria-label="삭제" data-reject-ticket="${esc(id)}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
+      <button type="button" class="msg-act msg-del todo-del" data-tip="삭제" aria-label="삭제" data-reject-ticket="${esc(id)}">
+        ${ICON_X}
       </button>
     </div>
   </div>`;
@@ -401,13 +414,13 @@ function renderTask(t) {
       ${descHtml}
       <div class="todo-meta">
         ${idPill("task", t.task_id, {"data-task": t.task_id}, `idpill-compact${filterTasks.has(t.task_id) ? " on" : ""}`)}
-        ${securityChip(t)}
+        ${securityMark(t)}
         <span class="todo-time" data-c="${c}" data-u="${u}" data-s="${esc(t.state)}"></span>
         ${assignStr ? `<span class="todo-rest">${assignStr}</span>` : ""}
       </div>
     </div>
-    <div class="todo-actions">
-      <button type="button" class="todo-del" data-tip="삭제" aria-label="삭제" data-delete-task="${esc(t.task_id)}">${ICON_TRASH}</button>
+    <div class="todo-actions inline-actions">
+      <button type="button" class="msg-act msg-del todo-del" data-tip="삭제" aria-label="삭제" data-delete-task="${esc(t.task_id)}">${ICON_TRASH}</button>
       <div class="tdd ${openTaskDD === t.task_id ? "open" : ""}" data-task="${esc(t.task_id)}">
         <button type="button" class="tdd-btn">${esc(STATE_LABEL[t.state] || t.state)}<span class="dd-caret"></span></button>
         <div class="tdd-menu">${opts}</div>
@@ -419,7 +432,7 @@ function renderTask(t) {
 function renderCompletedTask(t, reportInfo = {}) {
   const reportCount = reportInfo.report_count || 0;
   const latestReport = latestReportTime(reportInfo);
-  return `<div class="completed-card ${filterTasks.has(t.task_id) ? "on" : ""}" data-task="${esc(t.task_id)}">
+  return `<div class="summary-card completed-card ${filterTasks.has(t.task_id) ? "on" : ""}" data-task="${esc(t.task_id)}">
     <div class="summary-head">
       <span class="summary-title">${esc(t.title || reportInfo.title || "(제목 없음)")}</span>
     </div>
@@ -436,21 +449,125 @@ function latestReportTime(reportInfo = {}) {
   return times.length ? times[times.length - 1] : "";
 }
 
+function renderAgentAuth(name) {
+  if (!AUTH_AGENT_NAMES.has(name)) return "";
+  return `<span class="security-mark agent-auth" data-tip="보안 권한" aria-label="보안 권한">${ICON_UNLOCK}</span>`;
+}
 function renderAgent(name, a) {
   const task = a.task ? idPill("task", a.task, {"data-task": a.task}, "agent-task") : "";
-  return `<div class="agent ${filterAgents.has(name) ? "on" : ""}" data-agent="${esc(name)}" data-hb="${a.heartbeat || ""}">
+  const health = agentHealth(a);
+  return `<div class="summary-card agent ${filterAgents.has(name) ? "on" : ""}" data-agent="${esc(name)}" data-hb="${a.heartbeat || ""}">
     <div class="summary-head agent-head">
       <span class="summary-title agent-name">${esc(name)}</span>
       <span class="agent-status">
-        <span class="state ${cls(a.state)}">${esc(AGENT_STATE_LABEL[a.state] || a.state)}</span>
         <span class="beat"><span class="age"></span></span>
+        ${renderAgentAuth(name)}
+        ${healthMark(health, HEALTH_LABEL[health])}
       </span>
     </div>
     ${task ? `<div class="summary-meta agent-meta">${task}</div>` : ""}
     ${a.note ? `<div class="agent-note">${esc(a.note)}</div>` : ""}
-    <div class="agent-actions">
-      <button type="button" class="todo-del" data-tip="제거" aria-label="제거" data-delete-agent="${esc(name)}">${ICON_TRASH}</button>
+    <div class="agent-actions inline-actions">
+      <button type="button" class="msg-act msg-del agent-del" data-tip="제거" aria-label="제거" data-delete-agent="${esc(name)}">${ICON_TRASH}</button>
     </div>
+  </div>`;
+}
+function renderSkill(s) {
+  const pending = s.pending || {};
+  const pendingBits = ["grounding", "check", "gap", "risk"].filter(k => pending[k]).map(k => `${SKILL_EVIDENCE_LABEL[k]} ${pending[k]}`);
+  const warn = (s.warnings || []).length;
+  const health = skillHealth(s);
+  const meta = [
+    pendingBits.length ? `<span>근거 ${esc(pendingBits.join(", "))}</span>` : "",
+    warn ? `<span>주의 ${esc(warn)}건</span>` : "",
+  ].filter(Boolean).join("");
+  return `<div class="summary-card skill-card">
+    <div class="summary-head">
+      <span class="summary-title">${esc(s.name || s.skill_id || "(이름 없음)")}</span>
+      ${healthMark(health, HEALTH_LABEL[health])}
+    </div>
+    ${s.description ? `<div class="skill-desc">${esc(s.description)}</div>` : ""}
+    ${meta ? `<div class="summary-meta">${meta}</div>` : ""}
+  </div>`;
+}
+function bridgeRuntimeState(p, runtime = {}) {
+  if ((runtime.failureCount || 0) > 0) return "failure";
+  if (p.state && p.state !== "ready") return p.state;
+  return "ready";
+}
+function bridgeDisplayHandler(p) {
+  const raw = p.handler || p.handlerType || "monitor";
+  if (p.handlerType === "agent") {
+    const provider = raw.replace(/^agent\s+/, "");
+    return provider ? `${provider}-cli` : "agent-cli";
+  }
+  if (p.handlerType === "http" && p.protocol === "a2a") return "A2A";
+  if (p.handlerType === "http") return "HTTP";
+  if (p.handlerType === "openai-compatible") return "OpenAI Compatible";
+  return raw;
+}
+function bridgeTargetPills(targets = []) {
+  const cleaned = (targets || []).filter(Boolean);
+  if (!cleaned.length) return `<span class="bridge-target-muted">-</span>`;
+  return cleaned.map(t => {
+    if (t === "all" || t === "*") return `<span class="bridge-target-muted">${esc(t)}</span>`;
+    const exists = AGENT_NAMES.includes(t);
+    const attrs = exists ? {"data-agent": t} : {"aria-disabled": "true"};
+    const extra = exists ? "idpill-compact bridge-target" : "idpill-compact bridge-target bridge-target-missing";
+    return idPill("agent", t, attrs, extra);
+  }).join("");
+}
+function bridgeMatcherLine(p) {
+  const bits = [];
+  if (p.event) bits.push(`<span class="bridge-event">${esc(p.event)}</span>`);
+  const kinds = (p.matcherKinds || []).filter(Boolean);
+  if (kinds.length) bits.push(`<code class="bridge-kind">${esc(kinds.join(", "))}</code>`);
+  const extras = [...(p.matcherActors || []), ...(p.matcherObjectTypes || []), ...(p.matcherObjectIds || [])].filter(Boolean);
+  if (extras.length) bits.push(`<span>${esc(extras.join(", "))}</span>`);
+  if (!bits.length && p.matcher) bits.push(`<span>${esc(p.matcher)}</span>`);
+  return bits.join("");
+}
+function renderBridgeProfile(p, runtime = {}) {
+  const warnings = p.warnings || [];
+  const state = bridgeRuntimeState(p, runtime);
+  const health = bridgeHealth(state);
+  const positionTime = runtime.positionUpdatedAt
+    ? `<span class="bridge-time" data-position-time="${esc(runtime.positionUpdatedAt)}"></span>`
+    : "";
+  const meta = [
+    runtime.failureCount ? `failures ${runtime.failureCount}` : "",
+    state === "needs_config" ? "설정 필요" : "",
+    warnings.length ? `주의 ${warnings.length}건` : "",
+  ].filter(Boolean);
+  const handlerClass = `handler-${p.handlerType || p.protocol || "monitor"}`;
+  const matcherLine = bridgeMatcherLine(p);
+  return `<div class="summary-card bridge-card ${cls(state)}">
+    <div class="summary-head bridge-head">
+      <span class="summary-title bridge-title">${esc(p.name || "(이름 없음)")}${positionTime ? " " + positionTime : ""}</span>
+      ${healthMark(health, HEALTH_LABEL[health])}
+    </div>
+    <div class="bridge-route bridge-route-main">
+      <span class="bridge-dir ${cls(handlerClass)}">${esc(bridgeDisplayHandler(p))}</span>
+      <span class="bridge-arrow">→</span>
+      <span class="bridge-targets">${bridgeTargetPills(p.matcherTargets || [])}</span>
+    </div>
+    ${matcherLine ? `<div class="bridge-route bridge-route-matcher">${matcherLine}</div>` : ""}
+    ${meta.length ? `<div class="summary-meta bridge-extra-meta">${meta.map(v => `<span>${esc(v)}</span>`).join("")}</div>` : ""}
+  </div>`;
+}
+function renderBridgeGateway(g) {
+  const meta = [g.protocol || "", g.access || ""].filter(Boolean);
+  const state = g.state || "ready";
+  const health = bridgeHealth(state);
+  return `<div class="summary-card bridge-card gateway ${cls(state)}">
+    <div class="summary-head">
+      <span class="summary-title">${esc(g.name || "Gateway")}</span>
+      ${healthMark(health, HEALTH_LABEL[health])}
+    </div>
+    <div class="bridge-route">
+      <span>${esc(g.endpoint || "-")}</span>
+    </div>
+    <div class="summary-meta">${meta.map(v => `<span>${esc(v)}</span>`).join("")}</div>
   </div>`;
 }
 function updateAgentAges(now) {
@@ -458,13 +575,17 @@ function updateAgentAges(now) {
     const beat = card.querySelector(".beat"), ageEl = card.querySelector(".age");
     if (!ageEl) continue;
     const hb = parseFloat(card.dataset.hb);
-    if (isNaN(hb)) { ageEl.textContent = "활동 없음"; continue; }
+    if (isNaN(hb)) { ageEl.textContent = "없음"; continue; }
     const age = now - hb;
-    ageEl.textContent = "활동 " + fmtAge(age);
+    ageEl.textContent = fmtAge(age);
   }
 }
-const fmtDur = sec => sec < 60 ? Math.max(0, Math.round(sec)) + "초"
-  : sec < 3600 ? Math.round(sec / 60) + "분" : (sec / 3600).toFixed(1) + "시간";
+function updateBridgeAges(now) {
+  for (const el of document.querySelectorAll(".bridge-time[data-position-time]")) {
+    const t = new Date(el.dataset.positionTime).getTime() / 1000;
+    el.textContent = isNaN(t) ? el.dataset.positionTime : fmtAge(now - t);
+  }
+}
 // 작업 시간 텍스트를 갱신한다.
 function updateTaskTimes(now) {
   for (const el of document.querySelectorAll("#tasks .todo-time")) {
@@ -488,11 +609,14 @@ function fitTaskTexts() {
   }
 }
 window.addEventListener("resize", fitTaskTexts);
+window.addEventListener("resize", syncSideTabThumbAfterLayout);
 function invalidatePanelSig(panel) {
   if (panel === "tickets") sigTickets = null;
   else if (panel === "tasks") sigTasks = null;
   else if (panel === "completed") sigAssess = null;
+  else if (panel === "skills") sigSkills = null;
   else if (panel === "agents") sigAgents = null;
+  else if (panel === "bridgeProfiles" || panel === "bridgeGateways") sigBridges = null;
 }
 function setPanelExpanded(panel, expanded) {
   panelExpanded[panel] = expanded;
@@ -506,12 +630,21 @@ const PANEL_TOGGLE_ACTIONS = {
   tasks_less: () => setPanelExpanded("tasks", false),
   completed_more: () => setPanelExpanded("completed", true),
   completed_less: () => setPanelExpanded("completed", false),
+  skills_more: () => setPanelExpanded("skills", true),
+  skills_less: () => setPanelExpanded("skills", false),
   agents_more: () => setPanelExpanded("agents", true),
   agents_less: () => setPanelExpanded("agents", false),
+  bridge_profiles_more: () => setPanelExpanded("bridgeProfiles", true),
+  bridge_profiles_less: () => setPanelExpanded("bridgeProfiles", false),
+  bridge_gateways_more: () => setPanelExpanded("bridgeGateways", true),
+  bridge_gateways_less: () => setPanelExpanded("bridgeGateways", false),
 };
 function renderPanelToggle(action, label, dir) {
   return `<button type="button" class="todo-expand" data-panel-toggle="${esc(action)}">` +
     `${esc(label)}<span class="exp-caret ${cls(dir)}"></span></button>`;
+}
+function panelEmpty(label) {
+  return `<div class="panel-empty">${esc(label)}</div>`;
 }
 function handlePanelToggle(e) {
   const btn = e.target.closest("[data-panel-toggle]");
@@ -543,8 +676,8 @@ async function clearDone() {
 }
 
 // 섹션별 시그니처가 바뀔 때만 다시 그린다.
-let sigStop = null, sigMsg = null, sigTickets = null, sigTasks = null, sigAssess = null, sigAgents = null, sigDD = null;
-function resetSigs() { sigStop = sigMsg = sigTickets = sigTasks = sigAssess = sigAgents = sigDD = null; }
+let sigStop = null, sigMsg = null, sigTickets = null, sigTasks = null, sigAssess = null, sigSkills = null, sigAgents = null, sigBridges = null, sigDD = null;
+function resetSigs() { sigStop = sigMsg = sigTickets = sigTasks = sigAssess = sigSkills = sigAgents = sigBridges = sigDD = null; }
 function sig(...parts) { return JSON.stringify(parts); }
 
 let loopPanelOpen = false, loopPanelKeyNow = "", focusStopReason = false;
@@ -658,6 +791,7 @@ function ackIndex(rows) {
 }
 function updateProjectRoot(root) {
   STATE_ROOT = root || "";
+  setRefRoot(STATE_ROOT);
   const proj = byId("project");
   if (STATE_ROOT && proj.dataset.tip !== STATE_ROOT) {
     proj.textContent = STATE_ROOT.split("/").filter(Boolean).pop() || STATE_ROOT;
@@ -698,7 +832,7 @@ function updateTicketPanel(tickets) {
     expanded: panelExpanded.tickets,
     limit: PANEL_LIMIT.tickets,
     renderItem: renderTicket,
-    emptyHtml: `<div class="todo muted todo-empty">티켓 없음</div>`,
+    emptyHtml: panelEmpty("티켓 없음"),
     moreAction: "tickets_more",
     lessAction: "tickets_less",
     moreLabel: n => `티켓 ${n}개 더 보기`,
@@ -712,7 +846,7 @@ function updateTaskPanel(tasks, now) {
       expanded: panelExpanded.tasks,
       limit: PANEL_LIMIT.tasks,
       renderItem: renderTask,
-      emptyHtml: `<div class="todo muted todo-empty">작업 없음</div>`,
+      emptyHtml: panelEmpty("작업 없음"),
       moreAction: "tasks_more",
       lessAction: "tasks_less",
       moreLabel: n => `작업 ${n}개 더 보기`,
@@ -732,27 +866,72 @@ function updateCompletedPanel(tasks, taskReports) {
     expanded: panelExpanded.completed,
     limit: PANEL_LIMIT.completed,
     renderItem: t => renderCompletedTask(t, reportsByTask.get(t.task_id)),
-    emptyHtml: `<div class="todo muted todo-empty">완료 작업 없음</div>`,
+    emptyHtml: panelEmpty("완료 작업 없음"),
     moreAction: "completed_more",
     lessAction: "completed_less",
     moreLabel: n => `완료 ${n}개 더 보기`,
   });
 }
+function updateSkillPanel(skills) {
+  skills = skills || [];
+  const section = byId("skills-section");
+  if (section) section.hidden = skills.length === 0;
+  const skillSig = sig(skills, panelExpanded.skills);
+  if (skillSig === sigSkills) return;
+  sigSkills = skillSig;
+  byId("skills").innerHTML = renderPanelList(skills, {
+    expanded: panelExpanded.skills,
+    limit: PANEL_LIMIT.skills,
+    renderItem: renderSkill,
+    emptyHtml: panelEmpty("로컬 스킬 없음"),
+    moreAction: "skills_more",
+    lessAction: "skills_less",
+    moreLabel: n => `스킬 ${n}개 더 보기`,
+  });
+}
 function updateAgentPanel(agents, now) {
-  const agentSig = sig(AGENT_NAMES.map(n => [n, agents[n].state, agents[n].task, agents[n].note, agents[n].updated_at]), panelExpanded.agents);
+  const agentSig = sig(AGENT_NAMES.map(n => [n, agents[n].state, agents[n].task, agents[n].note, agents[n].updated_at, AUTH_AGENT_NAMES.has(n)]), panelExpanded.agents);
   if (agentSig !== sigAgents) {
     sigAgents = agentSig;
     byId("agents").innerHTML = renderPanelList(AGENT_NAMES, {
       expanded: panelExpanded.agents,
       limit: PANEL_LIMIT.agents,
       renderItem: n => renderAgent(n, agents[n]),
-      emptyHtml: `<div class="agent muted">등록된 에이전트 없음</div>`,
+      emptyHtml: panelEmpty("등록된 에이전트 없음"),
       moreAction: "agents_more",
       lessAction: "agents_less",
       moreLabel: n => `에이전트 ${n}개 더 보기`,
     });
   }
   updateAgentAges(now);
+}
+function updateBridgePanel(profiles, bridges, gateways, now) {
+  profiles = profiles || [];
+  bridges = bridges || [];
+  gateways = gateways || [];
+  const bridgeSig = sig(profiles, bridges, gateways, AGENT_NAMES, panelExpanded.bridgeProfiles, panelExpanded.bridgeGateways);
+  if (bridgeSig === sigBridges) { updateBridgeAges(now); return; }
+  sigBridges = bridgeSig;
+  const statusByName = new Map(bridges.map(row => [row.name, row]));
+  byId("bridge-profiles").innerHTML = renderPanelList(profiles, {
+    expanded: panelExpanded.bridgeProfiles,
+    limit: PANEL_LIMIT.bridgeProfiles,
+    renderItem: profile => renderBridgeProfile(profile, statusByName.get(profile.name) || {}),
+    emptyHtml: panelEmpty("Local profile 없음"),
+    moreAction: "bridge_profiles_more",
+    lessAction: "bridge_profiles_less",
+    moreLabel: n => `Profile ${n}개 더 보기`,
+  });
+  byId("bridge-gateways").innerHTML = renderPanelList(gateways, {
+    expanded: panelExpanded.bridgeGateways,
+    limit: PANEL_LIMIT.bridgeGateways,
+    renderItem: renderBridgeGateway,
+    emptyHtml: panelEmpty("Gateway 없음"),
+    moreAction: "bridge_gateways_more",
+    lessAction: "bridge_gateways_less",
+    moreLabel: n => `Gateway ${n}개 더 보기`,
+  });
+  updateBridgeAges(now);
 }
 function updateComposeOptions(cards, tasks) {
   lastTasks = tasks;
@@ -777,6 +956,10 @@ async function refresh() {
   updateProjectRoot(st.root);
   const agents = st.status.agents || {};
   AGENT_NAMES = Object.keys(agents).sort();
+  AUTH_AGENT_NAMES = new Set(((st.auth && st.auth.agents) || [])
+    .filter(row => row && row.canReadRestricted && row.agent)
+    .map(row => String(row.agent)));
+  updateViewerAuthUi(st.viewer || {});
   TASK_STATES = st.task_states || [];
   syncLoopPanelKey();
   updateLoopStateButton(st.stop);
@@ -788,7 +971,9 @@ async function refresh() {
   updateTaskPanel(tasks, st.now);
   const taskReports = (st.task_reports || []).slice();
   updateCompletedPanel(tasks, taskReports);
+  updateSkillPanel(st.skills || []);
   updateAgentPanel(agents, st.now);
+  updateBridgePanel(st.bridge_profiles || [], st.bridges || [], st.bridge_gateways || [], st.now);
   updateComposeOptions(st.cards || {}, tasks);
 }
 
@@ -849,6 +1034,35 @@ function modal(opts) {
     });
     (inp || ov.querySelector('[data-act="ok"]')).focus();
     if (inp) inp.select();
+  });
+}
+
+function viewerAuthModal() {
+  return modalShell(`<div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-msg">보안 보기를 사용할 사용자를 인증합니다.</div>
+      <label class="modal-label">사용자</label>
+      <input class="modal-input" data-field="viewer" type="text" autocomplete="username" placeholder="operator">
+      <label class="modal-label">토큰</label>
+      <input class="modal-input" data-field="token" type="password" autocomplete="current-password">
+      <div class="modal-actions">
+        <button type="button" class="modal-btn" data-act="cancel">취소</button>
+        <button type="button" class="modal-btn primary" data-act="ok">인증</button>
+      </div>
+    </div>`, (ov, done) => {
+    const viewer = ov.querySelector('[data-field="viewer"]');
+    const token = ov.querySelector('[data-field="token"]');
+    const cancel = () => done(null);
+    const ok = () => done({viewer:(viewer.value || "").trim(), token:token.value || ""});
+    ov.addEventListener("click", e => {
+      if (e.target === ov) return cancel();
+      const act = e.target.closest("[data-act]");
+      if (act) (act.dataset.act === "ok" ? ok : cancel)();
+    });
+    ov.addEventListener("keydown", e => {
+      if (e.key === "Escape") cancel();
+      else if (e.key === "Enter") { e.preventDefault(); ok(); }
+    });
+    viewer.focus();
   });
 }
 
@@ -971,6 +1185,13 @@ byId("completed").addEventListener("click", e => {
   const card = e.target.closest(".completed-card");
   if (card && card.dataset.task) { e.stopPropagation(); toggleInSet(filterTasks, card.dataset.task, card); }
 });
+byId("skills").addEventListener("click", e => { handlePanelToggle(e); });
+byId("bridge-gateways").addEventListener("click", e => { handlePanelToggle(e); });
+byId("bridge-profiles").addEventListener("click", e => {
+  if (handlePanelToggle(e)) return;
+  const agent = e.target.closest(".idpill[data-agent]");
+  if (agent && agent.dataset.agent) { e.stopPropagation(); jumpToAgent(agent.dataset.agent).catch(err => console.warn("agent jump failed", err)); }
+});
 byId("clear-done").addEventListener("click", clearDone);
 // 툴팁.
 const tipEl = document.createElement("div"); tipEl.className = "tooltip"; document.body.appendChild(tipEl);
@@ -1031,15 +1252,16 @@ function updateOverview(st) {
     `<span class="ov-ag" data-tip="${esc((AGENT_STATE_LABEL[s] || s) + " " + counts[s])}">` +
     `<span class="ov-dot ${cls(s)}"></span>${counts[s]}</span>`).join("");
   const tasks = st.tasks || [];
-  const working = tasks.filter(t => t.state === "working").length;
+  const completed = tasks.filter(t => t.state === "completed").length;
   const ticketCount = (st.tickets || st.issues || []).length;
   let last = "";
   if (st.messages.length) { const t = new Date(st.messages[st.messages.length - 1].time).getTime() / 1000; if (!isNaN(t)) last = fmtAge(st.now - t); }
   byId("overview").innerHTML =
-    `<span>메시지 ${st.messages_total}</span>` +
+    `<span>메시지 ${fmtCompactCount(st.messages_total)}</span>` +
     (agentBits ? `<span class="ov-agents">${agentBits}</span>` : "") +
-    `<span>작업 ${tasks.length}${working ? " (진행 " + working + ")" : ""}</span>` +
-    (ticketCount ? `<span>티켓 ${ticketCount}</span>` : "") +
+    `<span>작업 ${fmtCompactCount(tasks.length)}</span>` +
+    (completed ? `<span>완료 ${fmtCompactCount(completed)}</span>` : "") +
+    (ticketCount ? `<span>티켓 ${fmtCompactCount(ticketCount)}</span>` : "") +
     (last ? `<span>${esc(last)}</span>` : "");
   fitOverview();
 }
@@ -1086,6 +1308,7 @@ function clearTaskHighlight() {
 let taskJumpTimer = null;
 async function jumpToTask(id) {
   clearTimeout(taskJumpTimer);
+  setSideTab("work");
   if (hlTask === id) clearTaskHighlight();
   if (!taskRow(id) && !panelExpanded.tasks && (lastTasks || []).some(t => t.task_id === id)) {
     panelExpanded.tasks = true;
@@ -1094,6 +1317,34 @@ async function jumpToTask(id) {
   }
   highlightTask(id);
   taskJumpTimer = setTimeout(clearTaskHighlight, 1600);
+}
+let hlAgent = null, agentJumpTimer = null;
+function agentRow(id) {
+  return Array.from(document.querySelectorAll("#agents .agent[data-agent]"))
+    .find(row => row.dataset.agent === id) || null;
+}
+function clearAgentHighlight() {
+  hlAgent = null;
+  document.querySelectorAll("#agents .agent.hl").forEach(r => r.classList.remove("hl"));
+}
+function highlightAgent(id) {
+  if (hlAgent === id) return;
+  clearAgentHighlight(); hlAgent = id;
+  const row = agentRow(id);
+  if (row) { row.classList.add("hl"); row.scrollIntoView({block:"nearest"}); }
+}
+async function jumpToAgent(id) {
+  if (!AGENT_NAMES.includes(id)) return;
+  clearTimeout(agentJumpTimer);
+  setSideTab("agent", true, true);
+  if (hlAgent === id) clearAgentHighlight();
+  if (!agentRow(id) && !panelExpanded.agents) {
+    panelExpanded.agents = true;
+    sigAgents = null;
+    await refresh();
+  }
+  highlightAgent(id);
+  agentJumpTimer = setTimeout(clearAgentHighlight, 1600);
 }
 const timelineEl = byId("timeline");
 // reply 칩은 응답 대상 메시지를 강조한다.
@@ -1132,7 +1383,7 @@ async function deleteMessage(id) {
   }
 }
 async function writeClipboardText(text) {
-  let legacyError = null;
+  let copyFallbackError = null;
   try {
     const onCopy = e => {
       if (!e.clipboardData) return;
@@ -1162,14 +1413,14 @@ async function writeClipboardText(text) {
     }
     if (ok) return;
   } catch (err) {
-    legacyError = err;
+    copyFallbackError = err;
   }
   const clipboard = window.navigator?.clipboard;
   if (clipboard?.writeText) {
     await clipboard.writeText(text);
     return;
   }
-  throw legacyError || new Error("copy command failed");
+  throw copyFallbackError || new Error("copy command failed");
 }
 function setCopyButtonState(btn, copied) {
   if (!btn) return;
@@ -1401,6 +1652,30 @@ byId("clearbtn").addEventListener("click", async () => {
   settingsWrap.classList.remove("open");
   if (await modal({message: "현재 메시지·확인 기록을 비웁니다(작업·에이전트는 유지). 계속할까요?", confirmText: "비우기", danger: true})) post("/api/clear", {});
 });
+byId("viewer-authbtn").addEventListener("click", async () => {
+  settingsWrap.classList.remove("open");
+  if (VIEWER_AUTH.authenticated) {
+    await post("/api/viewer-logout", {});
+    return;
+  }
+  const creds = await viewerAuthModal();
+  if (!creds) return;
+  if (!creds.viewer || !creds.token) {
+    await modal({message:"사용자와 토큰을 입력하세요.", cancelText:null});
+    return;
+  }
+  const r = await fetch("/api/viewer-login", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(creds),
+  });
+  if (!r.ok) {
+    await modal({message:"인증 실패", cancelText:null});
+    return;
+  }
+  resetSigs();
+  await refresh();
+});
 function setInlineFormOpen(form, button, focusEl, open) {
   form.classList.toggle("open", open);
   form.setAttribute("aria-hidden", open ? "false" : "true");
@@ -1537,6 +1812,7 @@ function applyLayout() {
   const c = byId("compose");
   if (compose) setTimeout(() => { if (localStorage.getItem("composeOpen") === "1") c.classList.add("expanded"); }, 320);
   else c.classList.remove("expanded");
+  if (sideVisible) syncSideTabThumbAfterLayout();
 }
 function flip(key) {
   localStorage.setItem(key, localStorage.getItem(key) === "1" ? "0" : "1");
@@ -1567,6 +1843,9 @@ function closeFloatingSidePanelFromOutside(target) {
   closeFloatingSidePanel();
 }
 byId("toggleside").addEventListener("click", toggleSidePanel);
+byId("side-tab-work").addEventListener("click", () => setSideTab("work", true, true));
+byId("side-tab-agent").addEventListener("click", () => setSideTab("agent", true, true));
+byId("side-tab-bridge").addEventListener("click", () => setSideTab("bridge", true, true));
 document.addEventListener("pointerdown", e => closeFloatingSidePanelFromOutside(e.target), true);
 document.addEventListener("focusin", e => closeFloatingSidePanelFromOutside(e.target), true);
 document.addEventListener("keydown", e => {
@@ -1583,6 +1862,7 @@ function onSideModeChange() {
 }
 if (sideAutoCollapseMQ.addEventListener) sideAutoCollapseMQ.addEventListener("change", onSideModeChange);
 else if (sideAutoCollapseMQ.addListener) sideAutoCollapseMQ.addListener(onSideModeChange);
+setSideTab(sideTab, false);
 applyLayout();
 
 // 테마 선택.
@@ -1607,6 +1887,7 @@ function applyTextSize() {
   if (main) main.style.zoom = SIZE_ZOOM[idx];
   sizeSlider.value = idx;
   sizeSlider.style.setProperty("--pct", (idx / (SIZE_ZOOM.length - 1) * 100) + "%");
+  moveSideTabThumb();
 }
 sizeSlider.addEventListener("input", () => { localStorage.setItem("textsize", sizeSlider.value); applyTextSize(); });
 applyTextSize();
@@ -1616,6 +1897,6 @@ moveSegThumb();
 updateFilterIndicator();
 
 // 첫 페인트 뒤 애니메이션을 켠다.
-requestAnimationFrame(() => requestAnimationFrame(() => { document.body.classList.remove("no-anim"); moveSegThumb(); }));
+requestAnimationFrame(() => requestAnimationFrame(() => { document.body.classList.remove("no-anim"); moveSegThumb(); moveSideTabThumb(); }));
 
 refresh(); setInterval(refresh, 2500);

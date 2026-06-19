@@ -112,6 +112,7 @@ def _aas_submodel(asset_id: str, id_short: str, payload: Any) -> dict[str, Any]:
 
 
 def _message_record(row: dict[str, Any]) -> dict[str, Any]:
+    row = core.redact_record(row, "external")
     record = {
         "id": row.get("id", ""),
         "time": row.get("time", ""),
@@ -125,10 +126,14 @@ def _message_record(row: dict[str, Any]) -> dict[str, Any]:
         "replyTo": row.get("reply_to", ""),
     }
     record.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    if row.get("redacted"):
+        record["redacted"] = True
+        record["redactedFields"] = row.get("redactedFields") or []
     return record
 
 
 def _work_item_record(row: dict[str, Any]) -> dict[str, Any]:
+    row = core.redact_record(row, "external")
     record = {
         "id": row.get("task_id", ""),
         "title": row.get("title", ""),
@@ -139,10 +144,14 @@ def _work_item_record(row: dict[str, Any]) -> dict[str, Any]:
         "note": row.get("note", ""),
     }
     record.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    if row.get("redacted"):
+        record["redacted"] = True
+        record["redactedFields"] = row.get("redactedFields") or []
     return record
 
 
 def _review_item_record(row: dict[str, Any]) -> dict[str, Any]:
+    row = core.redact_record(row, "external")
     record = {
         "id": row.get("issue_id", ""),
         "title": row.get("title", ""),
@@ -157,6 +166,9 @@ def _review_item_record(row: dict[str, Any]) -> dict[str, Any]:
         "evidenceReferences": row.get("refs") or [],
     }
     record.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    if row.get("redacted"):
+        record["redacted"] = True
+        record["redactedFields"] = row.get("redactedFields") or []
     return record
 
 
@@ -271,7 +283,7 @@ def _participant_records(bus_dir: Path) -> list[dict[str, Any]]:
 
 def _change_event_record(event: dict[str, Any]) -> dict[str, Any]:
     return {
-        "cursor": event.get("cursor", ""),
+        "position": event.get("position", ""),
         "time": event.get("time", ""),
         "type": event.get("type", ""),
         "actor": event.get("actor", ""),
@@ -286,7 +298,7 @@ def assessment_packet(
     asset_id: str,
     asset_name: str = "",
     data_source: str = "",
-    event_cursor: str = "",
+    event_position: str = "",
     include_messages: int = 50,
     assessment_summary: Any = None,
     sensitivity: str = "",
@@ -303,7 +315,7 @@ def assessment_packet(
     messages = [_message_record(row) for row in message_rows]
     work_items = [_work_item_record(row) for row in core.fold_tasks(bus_dir)]
     review_items = [_review_item_record(row) for row in core.fold_issues(bus_dir, include_closed=True)]
-    change_events = [_change_event_record(event) for event in core.bus_events(bus_dir, after=event_cursor)]
+    change_events = [_change_event_record(event) for event in core.bus_events(bus_dir, after=event_position)]
     assessment_records = {
         "participants": _participant_records(bus_dir),
         "assessmentSummary": normalize_assessment_summary(assessment_summary),
@@ -313,8 +325,8 @@ def assessment_packet(
     traceability = {
         "assetId": asset["assetId"],
         "dataSource": data_source,
-        "eventCursor": event_cursor,
-        "latestEventCursor": change_events[-1]["cursor"] if change_events else event_cursor,
+        "eventPosition": event_position,
+        "latestEventPosition": change_events[-1]["position"] if change_events else event_position,
         "changeEvents": change_events,
     }
     submodels = [
