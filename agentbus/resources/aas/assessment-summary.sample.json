@@ -3,20 +3,25 @@
     {
       "participant": "reviewer-a",
       "summary": "Pressure trend exceeds the review threshold.",
-      "evidenceReferences": ["sensor:pressure:2026-06-16T01:00:00Z"],
-      "confidence": "medium"
+      "evidenceReferences": [
+        "sensor:pressure:2026-06-16T01:00:00Z"
+      ]
     },
     {
       "participant": "reviewer-b",
       "summary": "Recent maintenance note may explain part of the change.",
-      "evidenceReferences": ["maintenance:work-order-17"],
-      "confidence": "low"
+      "evidenceReferences": [
+        "maintenance:work-order-17"
+      ]
     }
   ],
   "consensus": [
     {
       "statement": "The pressure trend needs operator review before the next run.",
-      "participants": ["reviewer-a", "reviewer-b"],
+      "participants": [
+        "reviewer-a",
+        "reviewer-b"
+      ],
       "evidenceReferences": [
         "sensor:pressure:2026-06-16T01:00:00Z",
         "maintenance:work-order-17"
@@ -27,8 +32,14 @@
     {
       "topic": "Root cause",
       "positions": [
-        {"participant": "reviewer-a", "statement": "Process drift is plausible."},
-        {"participant": "reviewer-b", "statement": "Maintenance effects remain plausible."}
+        {
+          "participant": "reviewer-a",
+          "statement": "Process drift is plausible."
+        },
+        {
+          "participant": "reviewer-b",
+          "statement": "Maintenance effects remain plausible."
+        }
       ]
     }
   ],
@@ -39,7 +50,9 @@
     {
       "participant": "reviewer-b",
       "finding": "Maintenance work-order timing overlaps with the trend change.",
-      "evidenceReferences": ["maintenance:work-order-17"]
+      "evidenceReferences": [
+        "maintenance:work-order-17"
+      ]
     }
   ],
   "evidenceGaps": [

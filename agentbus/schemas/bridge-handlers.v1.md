@@ -1,6 +1,6 @@
 # bridge handlers
 
-Bridge handlers connect predefined bus events to a monitor handler, an agent runtime, or an API endpoint. The reusable configuration contract is `bridge-profile.v1`.
+Bridge handlers connect predefined bus events to a monitor handler, a local teammate runner, or an API endpoint. Local CLI teammates use `agentbus teammate run --profile <profile>` with a bus-local profile in `.agent-bus/bridge`. The reusable configuration contract is `bridge-profile.v1`.
 
 ## Event stream
 
@@ -9,11 +9,11 @@ agentbus bridge events --types message.created,ticket.created --jsonl
 agentbus bridge watch --types message.created --position-file .agent-bus/bridge/watch.position
 ```
 
-`bridge watch` observes and advances event positions. Handler execution belongs to `bridge run --profile`.
+`bridge watch` observes and advances event positions. `bridge run --profile` owns handler execution and keeps profile position files current.
 
 ## Agent handlers
 
-Agent handlers use fixed runtime entrypoints and pass options as argv arrays in the profile.
+`agentbus teammate run --profile <profile>` is the local teammate runner entrypoint. The bus-local profile selects one target agent, one provider, and provider options as an argv array.
 
 | Provider | Entrypoint |
 | --- | --- |
@@ -21,7 +21,7 @@ Agent handlers use fixed runtime entrypoints and pass options as argv arrays in 
 | `claude` | `claude <args...> -p <agent-bus prompt>` |
 | `gemini` | `gemini <args...> -p <agent-bus prompt>` |
 
-Agent-bus supplies the prompt and sends one `agent-runner-work.v1` JSON packet on stdin. The agent stdout becomes the report body.
+Agent-bus supplies the prompt and sends one `teammate-cycle.v1` JSON packet on stdin. The packet includes Key Context and trigger metadata. The teammate ends each cycle by waiting with a report, leaving a bounded self follow-up, asking lead/user input, or completing the slice. The invoked agent writes durable reports, task state, acks, and status through the bus; stdout remains an operator log. Existing matching request events are picked up unless they are already acked or delivered. Runner timeout is a visibility signal; the provider process keeps running and is judged by its final exit code and bus records.
 
 ## API handlers
 

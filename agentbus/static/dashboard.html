@@ -11,30 +11,24 @@
   <h1>Agent-Bus</h1>
   <span class="project" id="project"></span>
   <span class="muted" id="refreshed"></span>
-  <button class="loopstate" id="loopstate" type="button" aria-expanded="false" data-tip="루프 상태 패널 열기">루프 열림</button>
-  <button class="iconbtn" id="toggleside" data-tip="사이드 패널" aria-label="사이드 패널">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><line x1="15" y1="4.5" x2="15" y2="19.5"/></svg>
+  <span class="loopstate" id="loopstate" role="status" data-tip="루프 상태">루프 진행 중</span>
+  <button class="iconbtn" id="toggleside" data-tip="사이드 패널" aria-label="사이드 패널"><span data-icon="panel-left"></span>
   </button>
-  <button class="iconbtn" id="togglecompose" data-tip="메시지 보내기" aria-label="메시지 보내기">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.3a8 8 0 0 1-8.6 8 8.7 8.7 0 0 1-3.6-.8L3.5 20l1.5-4.8a8 8 0 0 1-.8-3.6 8 8 0 0 1 8-7.6 8 8 0 0 1 8.3 7.3z"/></svg>
+  <button class="iconbtn" id="togglecompose" data-tip="메시지 보내기" aria-label="메시지 보내기"><span data-icon="message-circle"></span>
   </button>
   <div class="settings-wrap" id="settings-wrap">
-    <button class="iconbtn" id="settingsbtn" data-tip="설정" aria-label="설정">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+    <button class="iconbtn" id="settingsbtn" data-tip="설정" aria-label="설정"><span data-icon="settings"></span>
     </button>
     <div class="settings-pop" id="settings-pop">
       <div class="set-sec">테마</div>
       <div class="set-row" id="theme-row">
-        <button type="button" class="set-opt" data-theme="" aria-label="시스템 테마">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M9 20h6M12 16v4"/></svg>
+        <button type="button" class="set-opt" data-theme="" aria-label="시스템 테마"><span data-icon="monitor"></span>
           <span class="set-label">시스템</span>
         </button>
-        <button type="button" class="set-opt" data-theme="light" aria-label="라이트 테마">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.1M12 19.1v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/></svg>
+        <button type="button" class="set-opt" data-theme="light" aria-label="라이트 테마"><span data-icon="sun"></span>
           <span class="set-label">라이트</span>
         </button>
-        <button type="button" class="set-opt" data-theme="dark" aria-label="다크 테마">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A7.6 7.6 0 0 1 9.8 4a8.1 8.1 0 1 0 10.2 10.2z"/></svg>
+        <button type="button" class="set-opt" data-theme="dark" aria-label="다크 테마"><span data-icon="moon"></span>
           <span class="set-label">다크</span>
         </button>
       </div>
@@ -47,19 +41,22 @@
       <div class="set-sec">보안 보기</div>
       <div class="set-auth">
         <span class="set-status" id="viewer-auth-state">꺼짐</span>
-        <button class="set-action" id="viewer-authbtn" type="button" aria-label="사용자 인증">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 9V7A5 5 0 0 0 7 7v2"/><rect x="4" y="9" width="16" height="12" rx="2"/><path d="M12 14v3"/></svg>
+        <button class="set-action" id="viewer-authbtn" type="button" aria-label="사용자 인증"><span data-icon="lock"></span>
           <span class="set-label">인증</span>
+        </button>
+      </div>
+      <div class="set-sec">루프</div>
+      <div class="set-actions">
+        <button class="set-action danger" id="force-stopbtn" type="button" aria-label="강제 정지"><span data-icon="octagon-x"></span>
+          <span class="set-label">강제 정지</span>
         </button>
       </div>
       <div class="set-sec">세션 메시지</div>
       <div class="set-actions">
-        <button class="set-action" id="rotatebtn" type="button" aria-label="메시지 보관">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16l-1.4 12H5.4L4 7z"/><path d="M8 7V4h8v3"/><path d="M9 12h6"/></svg>
+        <button class="set-action" id="rotatebtn" type="button" aria-label="메시지 보관"><span data-icon="archive"></span>
           <span class="set-label">보관</span>
         </button>
-        <button class="set-action danger" id="clearbtn" type="button" aria-label="메시지 비우기">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
+        <button class="set-action danger" id="clearbtn" type="button" aria-label="메시지 비우기"><span data-icon="trash"></span>
           <span class="set-label">비우기</span>
         </button>
       </div>
@@ -69,30 +66,31 @@
 <div id="compose-wrap">
 <form id="compose">
   <div class="inner">
-    <div class="row1">
-      <div class="seg" id="seg-kind">
-        <button type="button" data-v="note" class="on">note</button>
-        <button type="button" data-v="request">request</button>
-        <button type="button" data-v="report">report</button>
-      </div>
-      <div class="dd" id="dd-to">
-        <button type="button" class="dd-btn"><span class="dd-val">all</span><span class="dd-caret"></span></button>
-        <div class="dd-menu"></div>
-      </div>
-      <div class="dd" id="dd-task">
-        <button type="button" class="dd-btn"><span class="dd-val placeholder">작업 선택</span><span class="dd-caret"></span></button>
-        <div class="dd-menu"></div>
-      </div>
-      <button class="iconbtn" type="button" id="closecompose" data-tip="닫기" aria-label="닫기">✕</button>
-    </div>
-    <div class="row2">
-      <div class="body-wrap">
-        <textarea id="body" rows="1" placeholder="메시지 입력 · @로 파일 첨부 · ⌘/Ctrl+Enter 전송"></textarea>
+    <div class="compose-line">
+      <div class="body-wrap composer-field">
+        <div class="compose-input-row">
+          <div class="compose-token-row">
+            <div class="compose-kind" id="compose-kind">
+              <button class="compose-token kind-token tag kind note" id="kind-token" type="button" data-tip="종류" aria-label="종류" aria-expanded="false">
+                <span id="kind-token-label">메모</span>
+              </button>
+              <div class="kind-pop" id="kind-pop">
+                <button type="button" class="tag kind note" data-v="note">메모</button>
+                <button type="button" class="tag kind request" data-v="request">요청</button>
+                <button type="button" class="tag kind report" data-v="report">보고</button>
+                <button type="button" class="tag kind task" data-v="task">작업</button>
+                <button type="button" class="tag kind ticket" data-v="ticket">티켓</button>
+                <button type="button" class="tag kind stop" data-v="stop">정지</button>
+              </div>
+            </div>
+          </div>
+          <textarea id="body" rows="1" placeholder="메시지를 입력하세요"></textarea>
+        </div>
+        <div class="compose-meta-chips" id="compose-meta-chips"></div>
+        <button class="iconbtn send compose-send" type="submit" data-tip="보내기" aria-label="보내기"><span data-icon="send"></span>
+        </button>
         <div class="mention-menu" id="mention"></div>
       </div>
-      <button class="iconbtn send" type="submit" data-tip="보내기" aria-label="보내기">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10.5 13.5"/><path d="M21 3l-6.5 18-4-8-8-4z"/></svg>
-      </button>
     </div>
   </div>
 </form>
@@ -105,13 +103,11 @@
       <span class="filter-summary" id="filter-summary"></span>
       <div class="search-wrap" id="search-wrap">
         <input class="search-in" id="search-in" type="text" placeholder="메시지 검색…">
-        <button class="iconbtn sm" id="searchbtn" data-tip="검색" aria-label="검색">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.4-3.4"/></svg>
+        <button class="iconbtn sm" id="searchbtn" data-tip="검색" aria-label="검색"><span data-icon="search"></span>
         </button>
       </div>
       <div class="filter-wrap" id="filter-wrap">
-        <button class="iconbtn sm" id="filterbtn" data-tip="필터" aria-label="필터">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h18l-7 8v5l-4-2.2v-2.8z"/></svg>
+        <button class="iconbtn sm" id="filterbtn" data-tip="필터" aria-label="필터"><span data-icon="filter"></span>
         </button>
         <div class="filter-pop" id="filter-pop">
           <div class="fp-head">
@@ -120,9 +116,12 @@
           </div>
           <div class="fp-sec">종류</div>
           <div class="seg filter-kind" id="fp-kinds">
-            <button type="button" data-kind="note">note</button>
-            <button type="button" data-kind="report">report</button>
-            <button type="button" data-kind="request">request</button>
+            <button type="button" data-kind="note">메모</button>
+            <button type="button" data-kind="request">요청</button>
+            <button type="button" data-kind="report">보고</button>
+            <button type="button" data-kind="task">작업</button>
+            <button type="button" data-kind="ticket">티켓</button>
+            <button type="button" data-kind="stop">정지</button>
           </div>
           <div class="fp-sec">참여자</div>
           <div class="fp-list" id="fp-agents"></div>
@@ -131,22 +130,34 @@
         </div>
       </div>
     </div>
+    <section class="key-context-card card" id="key-context-card">
+      <div class="key-context-head">
+        <div class="key-context-title"><span data-icon="key"></span>
+          <span>Key Context</span>
+          <span class="key-context-meta" id="key-context-meta"></span>
+        </div>
+        <div class="key-context-actions">
+          <button class="iconbtn sm" id="edit-key-context" type="button" data-tip="편집" aria-label="편집"><span data-icon="edit"></span>
+          </button>
+          <button class="iconbtn sm" id="toggle-key-context-lines" type="button" data-tip="접기" aria-label="접기"><span data-icon="chevron-down"></span>
+          </button>
+        </div>
+      </div>
+      <div class="key-context-body" id="key-context-body"></div>
+    </section>
     <div id="timeline"></div>
   </div>
   <aside id="side">
     <div class="side-tabbar">
       <div class="side-tabs" id="side-tabs" role="tablist" aria-label="사이드 패널">
         <span class="side-tab-thumb" aria-hidden="true"></span>
-        <button id="side-tab-work" class="on" type="button" role="tab" aria-selected="true" aria-controls="side-work" aria-label="작업">
-          <svg class="side-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h10M9 12h10M9 18h10"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+        <button id="side-tab-work" class="on" type="button" role="tab" aria-selected="true" aria-controls="side-work" aria-label="작업"><span data-icon="list" data-icon-class="side-tab-icon"></span>
           <span class="side-tab-label">작업</span>
         </button>
-        <button id="side-tab-agent" type="button" role="tab" aria-selected="false" aria-controls="side-agent" aria-label="에이전트">
-          <svg class="side-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><circle cx="7" cy="17" r="2.6"/><circle cx="17" cy="17" r="2.6"/><path d="M10.6 9.7 8.2 14.7M13.4 9.7l2.4 5M9.6 17h4.8"/></svg>
+        <button id="side-tab-agent" type="button" role="tab" aria-selected="false" aria-controls="side-agent" aria-label="에이전트"><span data-icon="agent" data-icon-class="side-tab-icon"></span>
           <span class="side-tab-label">에이전트</span>
         </button>
-        <button id="side-tab-bridge" type="button" role="tab" aria-selected="false" aria-controls="side-bridge" aria-label="Bridge">
-          <svg class="side-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5V9"/><path d="M15 4.5V9"/><path d="M7 9h10v4.5a5 5 0 0 1-10 0V9z"/><path d="M12 18.5V21"/></svg>
+        <button id="side-tab-bridge" type="button" role="tab" aria-selected="false" aria-controls="side-bridge" aria-label="Bridge"><span data-icon="bridge" data-icon-class="side-tab-icon"></span>
           <span class="side-tab-label">Bridge</span>
         </button>
       </div>
@@ -154,36 +165,15 @@
     <div id="side-scroll" class="side-scroll">
       <div id="side-work" class="side-tab-panel" role="tabpanel" aria-labelledby="side-tab-work">
         <section>
-          <div class="panel-title">티켓
-            <span class="pt-actions">
-              <button class="iconbtn sm" id="newticket" data-tip="새 티켓" aria-label="새 티켓">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-              </button>
-            </span>
-          </div>
-          <form id="newticket-form" class="newtask-form" aria-hidden="true">
-            <input id="newticket-title" placeholder="검토할 티켓 한 줄 · Enter 추가" autocomplete="off">
-            <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
-            </button>
-          </form>
+          <div class="panel-title">티켓</div>
           <div id="tickets"></div>
         </section>
         <section>
           <div class="panel-title">작업
             <span class="pt-actions">
               <button class="linkbtn" id="clear-done" type="button" hidden>완료 지우기</button>
-              <button class="iconbtn sm" id="newtask" data-tip="새 작업" aria-label="새 작업">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-              </button>
             </span>
           </div>
-          <form id="newtask-form" class="newtask-form" aria-hidden="true">
-            <input id="newtask-title" placeholder="작업 제목 입력 · Enter 추가" autocomplete="off">
-            <button class="iconbtn primary" type="submit" data-tip="추가" aria-label="추가">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6.5"/></svg>
-            </button>
-          </form>
           <div id="tasks"></div>
         </section>
         <section>
@@ -203,11 +193,11 @@
       </div>
       <div id="side-bridge" class="side-tab-panel" role="tabpanel" aria-labelledby="side-tab-bridge" hidden>
         <section>
-          <div class="panel-title">Profiles <span class="panel-subtitle">local configs</span></div>
+          <div class="panel-title">프로필 <span class="panel-subtitle">로컬</span></div>
           <div id="bridge-profiles"></div>
         </section>
         <section>
-          <div class="panel-title">Gateways <span class="panel-subtitle">serve endpoints</span></div>
+          <div class="panel-title">게이트웨이 <span class="panel-subtitle">수신</span></div>
           <div id="bridge-gateways"></div>
         </section>
       </div>

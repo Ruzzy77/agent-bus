@@ -1,0 +1,25 @@
+{
+  "event": "message.created",
+  "fromStart": true,
+  "handler": {
+    "args": [
+      "--sandbox",
+      "read-only"
+    ],
+    "provider": "codex",
+    "type": "agent"
+  },
+  "intervalSeconds": 5,
+  "matcher": {
+    "kind": [
+      "request",
+      "task",
+      "ticket",
+      "stop"
+    ],
+    "target": "a-demo-policy"
+  },
+  "name": "codex-policy-runner",
+  "schemaVersion": "bridge-profile.v1",
+  "timeoutSeconds": 0
+}

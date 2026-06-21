@@ -1,6 +1,6 @@
 # bridge-profile.v1
 
-`bridge-profile.v1` routes predefined bus events to a monitor handler, an agent runtime, or an API handler. It does not carry arbitrary shell commands.
+`bridge-profile.v1` routes predefined bus events to a monitor handler, an API handler, or a profile-backed local agent entrypoint. The normal opt-in local CLI teammate loop is `agentbus teammate run`.
 
 ## Shape
 
@@ -11,17 +11,14 @@
   "event": "message.created",
   "matcher": {
     "target": "codex",
-    "kind": ["request"]
+    "kind": ["request", "task", "ticket", "stop"]
   },
   "handler": {
     "type": "agent",
     "provider": "codex",
     "args": ["--sandbox", "workspace-write"]
   },
-  "envs": [],
-  "intervalSeconds": 5,
-  "maxSeconds": 0,
-  "timeoutSeconds": 0
+  "intervalSeconds": 5
 }
 ```
 
@@ -39,7 +36,6 @@
 | `maxSeconds` | Maximum run time. `0` means unlimited. |
 | `timeoutSeconds` | Handler timeout seconds. `0` disables it where the handler supports timeout. |
 | `fromStart` | Process existing matching events before waiting. |
-| `markDelivered` | For agent handlers, write `delivered.jsonl` after successful processing. |
 | `positionFile` | Bridge position path. Relative paths are under the channel directory. |
 | `failLog` | Bridge failure log path. Relative paths are under the channel directory. |
 
@@ -47,9 +43,9 @@ Default state paths are `<bus>/bridge/<name>.position` and `<bus>/bridge/<name>.
 
 ## Data handling
 
-- `http`, `a2a`, and `openai-compatible` handlers do not receive `restricted` events.
+- `http` handlers, including `protocol: "a2a"`, and `openai-compatible` handlers receive redacted notices for `restricted` events.
 - `internal` events are projected with content-bearing fields redacted before external handlers run.
-- `agent` handlers receive `restricted` raw fields only when the matcher target agent presents a valid `AGENTBUS_AGENT_TOKEN`; otherwise the work packet stays redacted.
+- `agent` handlers receive `restricted` raw fields only when the matcher target agent presents a valid `AGENTBUS_AGENT_TOKEN`; otherwise the cycle input stays redacted.
 - Failure logs omit raw restricted payloads.
 
 ## Matcher
@@ -58,7 +54,7 @@ Supported matcher keys are deliberately small:
 
 | Key | Matches |
 | --- | --- |
-| `target` | Single event target agent id. Omit this key to leave the profile untargeted. |
+| `target` | Single event target. Use an agent id or a unique display name. Omit this key to leave the profile untargeted. |
 | `kind` | Message kind from `event.data.kind`. |
 | `actor` | Event actor. |
 | `objectType` | `event.object.type`. |
@@ -78,7 +74,7 @@ Print matching events and update the profile position. No external process or ne
 
 ### `agent`
 
-Runs a fixed agent CLI entrypoint with `shell=False`.
+Runs a fixed agent CLI entrypoint with `shell=False`. For the opt-in local teammate loop, place the profile under `.agent-bus/bridge` and run it with `agentbus teammate run --profile <profile>`. The profile owns the target agent, provider, argv, event filter, interval, and timeout policy. `bridge run` executes in the local shell that starts the bridge runner, so profile environment values and CLI paths come from that process.
 
 | Provider | Entrypoint |
 | --- | --- |
@@ -86,7 +82,7 @@ Runs a fixed agent CLI entrypoint with `shell=False`.
 | `claude` | `claude <args...> -p <agent-bus prompt>` |
 | `gemini` | `gemini <args...> -p <agent-bus prompt>` |
 
-`args` is an argv array. Agent-bus supplies the prompt and sends one `agent-runner-work.v1` packet on stdin.
+`args` is an argv array. Agent-bus supplies the prompt and sends one `teammate-cycle.v1` packet on stdin. The packet includes Key Context and trigger metadata. The teammate ends each cycle by waiting with a report, leaving a bounded self follow-up, asking lead/user input, or completing the slice. The invoked agent writes durable reports, task state, acks, and status through the bus; stdout remains an operator log. Agent handlers pick up existing matching request events unless they are already acked or delivered. `timeoutSeconds` marks a long-running provider cycle and keeps waiting; it does not terminate the provider process.
 
 ### `http`
 
@@ -115,13 +111,14 @@ Sends matching events to an OpenAI-compatible chat completions endpoint.
 ```
 
 Environment references use whole-string `$ENV_NAME` values. Put the required names in `envs` so `bridge check` and the dashboard can show setup state without exposing values.
+Handlers that carry tokens or API keys use HTTPS by default. Set `allowInsecure: true` only for a trusted local test endpoint.
 
 ## Commands
 
 ```bash
-cp .agent-bus/bridge/profile.template.json .agent-bus/bridge/codex-runner-inbox.json
-agentbus bridge check --file .agent-bus/bridge/codex-runner-inbox.json
-agentbus bridge run --profile .agent-bus/bridge/codex-runner-inbox.json --once
+cp .agent-bus/bridge/profile.template.json .agent-bus/bridge/reviewer-webhook.json
+agentbus bridge check --profile .agent-bus/bridge/reviewer-webhook.json
+agentbus bridge run --profile .agent-bus/bridge/reviewer-webhook.json
 
 cp "$(agentbus resource path bridge/a2a-reviewer.json)" .agent-bus/bridge/a2a-reviewer.json
 ```

@@ -1,0 +1,7 @@
+{
+  "body": "이번 demo bus는 리드가 사용자 요청을 해석해 작업 흐름으로 옮기고, 여러 에이전트의 판단을 하나의 맥락으로 묶는 과정을 보여주는 예시입니다.\n\n작업·티켓·정지는 리드가 현재 맥락을 해석해 실제 작업, 티켓, 정지 기록으로 옮기는 관리 요청으로 다룹니다.\n\n공개 예시는 demo auth로 로컬 capsule 잠금 해제 흐름을 확인하도록 구성합니다.",
+  "revision": 3,
+  "schemaVersion": "agentbus.key-context.v1",
+  "updatedAt": "2026-06-20T03:06:00.000+00:00",
+  "updatedBy": "a-demo-lead"
+}

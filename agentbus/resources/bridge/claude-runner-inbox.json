@@ -4,15 +4,17 @@
   "event": "message.created",
   "matcher": {
     "target": "claude",
-    "kind": ["request"]
+    "kind": [
+      "request",
+      "task",
+      "ticket",
+      "stop"
+    ]
   },
   "handler": {
     "type": "agent",
     "provider": "claude",
     "args": []
   },
-  "intervalSeconds": 5,
-  "maxSeconds": 0,
-  "timeoutSeconds": 0,
-  "markDelivered": true
+  "intervalSeconds": 5
 }

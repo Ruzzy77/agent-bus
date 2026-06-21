@@ -1,26 +1,14 @@
-{"assign": ["codex"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-review", "time": "2026-06-17T00:01:00.000+00:00", "title": "Review runner docs"}
-{"by": "codex", "event": "state", "note": "checking README, workflow skill, and smoke coverage", "state": "working", "task_id": "t-demo-review", "time": "2026-06-17T00:04:00.000+00:00"}
-{"assign": ["claude"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-ops", "time": "2026-06-17T00:02:00.000+00:00", "title": "Prepare field assessment packet"}
-{"by": "claude", "event": "state", "note": "operator must confirm external transfer before sending restricted data", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-17T00:07:00.000+00:00"}
-{"assign": ["codex"], "by": "operator", "event": "created", "state": "submitted", "task_id": "t-demo-security", "time": "2026-06-17T00:03:00.000+00:00", "title": "Check bridge sensitive-data guardrail"}
-{"by": "codex", "event": "state", "note": "blocked restricted runner packet and API mock passed", "state": "completed", "task_id": "t-demo-security", "time": "2026-06-17T00:09:00.000+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-ops", "time": "2026-06-18T15:29:09.301+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "canceled", "task_id": "t-demo-ops", "time": "2026-06-18T15:29:14.659+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-ops", "time": "2026-06-18T15:29:16.734+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-review", "time": "2026-06-18T15:30:17.244+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-review", "time": "2026-06-18T15:35:40.829+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "submitted", "task_id": "t-demo-security", "time": "2026-06-18T15:37:45.162+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-security", "time": "2026-06-18T15:37:47.870+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "completed", "task_id": "t-demo-security", "time": "2026-06-18T15:37:54.344+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:28.695+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "submitted", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:31.261+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:33.611+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "completed", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:36.063+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:38.878+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "completed", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:41.978+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "canceled", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:45.795+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "working", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:48.736+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:50.311+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-ops", "time": "2026-06-18T15:38:53.220+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "input_required", "task_id": "t-demo-ops", "time": "2026-06-19T03:13:49.268+00:00"}
-{"by": "user", "event": "state", "note": "", "state": "failed", "task_id": "t-demo-review", "time": "2026-06-19T03:13:53.609+00:00"}
+{"assign": ["a-demo-lead"], "by": "user", "event": "created", "state": "submitted", "task_id": "t-demo-lead", "time": "2026-06-20T03:00:00.000+00:00", "title": "데모버스 쇼케이스 구성"}
+{"by": "a-demo-lead", "event": "state", "note": "Key Context와 teammate 작업 범위 구성", "state": "working", "task_id": "t-demo-lead", "time": "2026-06-20T03:01:00.000+00:00"}
+{"assign": ["a-demo-ui"], "by": "a-demo-lead", "event": "created", "state": "submitted", "task_id": "t-demo-ui", "time": "2026-06-20T03:03:00.000+00:00", "title": "dashboard consistency and primitive review"}
+{"by": "a-demo-ui", "event": "state", "note": "compose, filter, cards, bridge tab inspection", "state": "working", "task_id": "t-demo-ui", "time": "2026-06-20T03:04:00.000+00:00"}
+{"by": "a-demo-ui", "event": "state", "note": "reported dashboard consistency in message m-demo-005", "state": "completed", "task_id": "t-demo-ui", "time": "2026-06-20T03:06:00.000+00:00"}
+{"assign": ["a-demo-docs"], "by": "a-demo-lead", "event": "created", "state": "submitted", "task_id": "t-demo-docs", "time": "2026-06-20T03:08:00.000+00:00", "title": "docs and workflow consistency review"}
+{"by": "a-demo-docs", "event": "state", "note": "reported docs/workflow review in message m-demo-009", "state": "completed", "task_id": "t-demo-docs", "time": "2026-06-20T03:09:00.000+00:00"}
+{"assign": ["a-demo-policy"], "by": "a-demo-lead", "event": "created", "sensitivity": "internal", "state": "submitted", "task_id": "t-demo-policy", "time": "2026-06-20T03:10:00.000+00:00", "title": "policy and packet boundary review"}
+{"by": "a-demo-policy", "event": "state", "note": "user approval needed before external restricted handoff", "state": "input_required", "task_id": "t-demo-policy", "time": "2026-06-20T03:11:00.000+00:00"}
+{"assign": ["a-demo-a2a"], "by": "a-demo-lead", "event": "created", "state": "submitted", "task_id": "t-demo-a2a", "time": "2026-06-20T03:12:00.000+00:00", "title": "A2A outbound failure visibility"}
+{"by": "a-demo-a2a", "event": "state", "note": "local demo endpoint refused connection; failure log kept for dashboard", "state": "failed", "task_id": "t-demo-a2a", "time": "2026-06-20T03:13:00.000+00:00"}
+{"assign": ["a-demo-claude"], "by": "user", "event": "created", "state": "submitted", "task_id": "t-demo-ops", "time": "2026-06-20T03:14:00.000+00:00", "title": "restricted assessment packet boundary"}
+{"by": "a-demo-lead", "event": "state", "note": "kept as restricted message demonstration; external send not approved", "state": "canceled", "task_id": "t-demo-ops", "time": "2026-06-20T03:15:00.000+00:00"}
+{"assign": ["a-demo-docs"], "by": "a-demo-lead", "event": "created", "state": "submitted", "task_id": "t-demo-followup", "time": "2026-06-20T03:16:00.000+00:00", "title": "fresh clone screenshot follow-up"}

@@ -30,7 +30,7 @@
 | `object` | Primary object touched by the event. |
 | `data` | Source row projection. `restricted` content is redacted; `internal` content is redacted on bridge output paths. |
 
-`data` may include `sensitivity`, `retention`, and redaction metadata. Bridge handlers use those fields before webhooks, SDK bridge calls, or protocol transfer.
+`data` may include `sensitivity` and redaction metadata. Bridge handlers use those fields before webhooks, SDK bridge calls, or protocol transfer.
 
 ## Event types
 

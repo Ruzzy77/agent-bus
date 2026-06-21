@@ -1,0 +1,2 @@
+{"type":"grounding","ref":"message:m-demo-001","note":"The demo starts from a user request that the lead turns into a workflow."}
+{"type":"check","ref":"message:m-demo-016","note":"Final report should prove the fixture is a workflow showcase, not static filler."}

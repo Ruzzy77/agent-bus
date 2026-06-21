@@ -35,6 +35,8 @@ agentbus = [
   "skills/*/*.md",
   "schemas/*.md",
   "resources/demo-bus/*",
+  "resources/demo-bus/bridge/*.json",
+  "resources/demo-bus/teammate-runs/*",
   "resources/demo-bus/skills/*/*.md",
   "resources/demo-bus/skills/*/*.jsonl",
   "resources/aas/*.json",

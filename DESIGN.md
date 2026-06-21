@@ -29,7 +29,7 @@ Agent-Bus dashboard is a local workbench for agent collaboration. Its visual lan
 - `seg` and `side-tabs` are the segmented-control family. Selected thumbs use `--segment-thumb`.
 - `refs-expander` is the collapsed reference-file pattern.
 - `panel-empty` is the neutral empty state for side-panel sections. Empty text should not borrow card, task, or agent classes.
-- `/static/dashboard-primitives.js` owns reusable render helpers such as escaping, ID pills, status marks, reference expanders, security marks, shared icons, and time formatting. Keep feature state and network behavior in `/static/dashboard.js`.
+- `/static/dashboard-primitives.js` owns reusable render helpers such as escaping, ID pills, status marks, reference expanders, security marks, the Lucide icon registry, and time formatting. Keep feature state and network behavior in `/static/dashboard.js`.
 
 ## Before adding UI
 

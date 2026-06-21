@@ -125,7 +125,7 @@ def _message_record(row: dict[str, Any]) -> dict[str, Any]:
         "workItemId": row.get("task_id", ""),
         "replyTo": row.get("reply_to", ""),
     }
-    record.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    record.update(core.security_fields(core.effective_sensitivity(row)))
     if row.get("redacted"):
         record["redacted"] = True
         record["redactedFields"] = row.get("redactedFields") or []
@@ -143,7 +143,7 @@ def _work_item_record(row: dict[str, Any]) -> dict[str, Any]:
         "updatedAt": row.get("updated_at", ""),
         "note": row.get("note", ""),
     }
-    record.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    record.update(core.security_fields(core.effective_sensitivity(row)))
     if row.get("redacted"):
         record["redacted"] = True
         record["redactedFields"] = row.get("redactedFields") or []
@@ -165,7 +165,7 @@ def _review_item_record(row: dict[str, Any]) -> dict[str, Any]:
         "communicationId": row.get("message_id", ""),
         "evidenceReferences": row.get("refs") or [],
     }
-    record.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    record.update(core.security_fields(core.effective_sensitivity(row)))
     if row.get("redacted"):
         record["redacted"] = True
         record["redactedFields"] = row.get("redactedFields") or []
@@ -302,7 +302,6 @@ def assessment_packet(
     include_messages: int = 50,
     assessment_summary: Any = None,
     sensitivity: str = "",
-    retention: str = "",
 ) -> dict[str, Any]:
     core.ensure_bus(bus_dir)
     asset = {
@@ -359,7 +358,7 @@ def assessment_packet(
             "conceptDescriptions": [],
         },
     }
-    packet.update(core.security_fields(sensitivity, retention))
+    packet.update(core.security_fields(sensitivity))
     return packet
 
 

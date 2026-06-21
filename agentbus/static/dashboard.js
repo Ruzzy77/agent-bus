@@ -1,8 +1,10 @@
 const {
-  esc, cls, byId, fmtTime, fmtAge, fmtDur, fmtCompactCount,
-  setTip, idPill, healthMark, setRefRoot, splitRefs, renderRefsExpander, securityMark,
+  esc, cls, byId, fmtTime, fmtAge, fmtDur, fmtCompactCount, icon, hydrateIcons,
+  setTip, idPill, statusMark, healthMark, setRefRoot, splitRefs, renderRefsExpander, securityMark,
   ICON_REPLY, ICON_EMPTY, ICON_COPY, ICON_COPY_DONE, ICON_TRASH, ICON_SEND, ICON_CHECK, ICON_DBLCHECK, ICON_X, ICON_UNLOCK,
 } = window.AgentBusDashboardPrimitives;
+
+hydrateIcons();
 
 function fitProjectBadge() {
   const header = document.querySelector("header");
@@ -18,23 +20,72 @@ function onToggle(id, open) { if (open) expanded.add(id); else expanded.delete(i
 let replyOpenId = null, replyDraft = "";
 
 let AGENT_NAMES = [];
+let AGENT_LABELS = {};
 let AUTH_AGENT_NAMES = new Set();
 let VIEWER_AUTH = {authenticated:false, name:""};
+let KEY_CONTEXT = {schemaVersion:"agentbus.key-context.v1", body:"", revision:0};
+let keyContextCompact = typeof localStorage !== "undefined" && localStorage.getItem("keyContextCompact") === "1";
 let RECIPIENT_NAMES = [];
 let RECIPIENT_OPTIONS = [];
+let LEAD_AGENT_ID = "";
+let composeToTouched = false;
 
 let STATE_ROOT = "";
+
+const KIND_LABEL = {note:"메모", request:"요청", report:"보고", task:"작업", ticket:"티켓", stop:"정지", ack:"확인"};
+function kindLabel(kind) { return KIND_LABEL[String(kind || "")] || String(kind || ""); }
+
+const ICON_RUNNER_PROFILE = icon("bridge", {class:"agent-profile-icon-svg"});
+const ICON_RUNNER_MISSING = icon("circle-help", {class:"agent-profile-icon-svg"});
+
+function agentLabel(id) {
+  const key = String(id || "");
+  if (AGENT_LABELS[key]) return AGENT_LABELS[key];
+  return /^a-[0-9a-f]{6,}$/i.test(key) ? "삭제됨" : key;
+}
+function agentIdForRef(ref) {
+  const key = String(ref || "");
+  if (AGENT_NAMES.includes(key)) return key;
+  return AGENT_NAMES.find(id => AGENT_LABELS[id] === key) || "";
+}
+function agentDisplay(ref) {
+  const key = String(ref || "");
+  const id = agentIdForRef(key);
+  if (id) return agentLabel(id);
+  return /^a-[0-9a-f]{6,}$/i.test(key) ? "삭제됨" : key;
+}
+function agentPill(ref, attrs = {}, extraClass = "") {
+  const id = agentIdForRef(ref);
+  return idPill("agent", id ? agentLabel(id) : "삭제됨", attrs, extraClass);
+}
+function agentLabelSig() {
+  return AGENT_NAMES.map(id => [id, AGENT_LABELS[id] || id]);
+}
+function isLeadAgent(a = {}) {
+  return String(a.role || "") === "lead";
+}
+function runnerProfileName(a = {}) {
+  return String(a.runnerProfile || "").trim();
+}
+function renderAgentBadges(a = {}) {
+  const lead = isLeadAgent(a) ? `<span class="code-pill agent-lead-badge">lead</span>` : "";
+  const profile = runnerProfileName(a);
+  const profileMark = profile
+    ? `<span class="agent-profile-mark" data-tip="${esc(profile)}" aria-label="${esc(profile)}">${ICON_RUNNER_PROFILE}</span>`
+    : (isLeadAgent(a) ? "" : `<span class="agent-profile-mark missing" data-tip="프로필 없음" aria-label="프로필 없음">${ICON_RUNNER_MISSING}</span>`);
+  return lead + profileMark;
+}
 
 function renderAcks(ackers, sender) {
   if (!ackers.length) return "";
   const expected = AGENT_NAMES.filter(a => a !== sender);
   if (expected.length > 0 && expected.every(a => ackers.includes(a))) {
-    return `<span class="ackchip ackall" data-tip="전체 확인: ${esc(ackers.join(", "))}">${ICON_DBLCHECK}</span>`;
+    return `<span class="ackchip ackall" data-tip="전체 확인: ${esc(ackers.map(agentLabel).join(", "))}">${ICON_DBLCHECK}</span>`;
   }
-  const shown = ackers.slice(0, 2).map(a => `<span class="ackchip">${ICON_CHECK}${esc(a)}</span>`).join("");
+  const shown = ackers.slice(0, 2).map(a => `<span class="ackchip">${ICON_CHECK}${esc(agentLabel(a))}</span>`).join("");
   const hidden = ackers.slice(2);
   if (!hidden.length) return shown;
-  const pop = hidden.map(a => `<span>${ICON_CHECK}${esc(a)}</span>`).join("");
+  const pop = hidden.map(a => `<span>${ICON_CHECK}${esc(agentLabel(a))}</span>`).join("");
   return shown + `<span class="ackchip ackmore" tabindex="0">+${hidden.length}<span class="ackmore-pop">${pop}</span></span>`;
 }
 
@@ -197,27 +248,18 @@ function loopStatusLabel(stop) {
   const mode = loopStatusMode(stop);
   if (mode === "closed") return "루프 종료됨";
   if (mode === "requested") return "정지 요청됨";
-  return "루프 열림";
+  return "루프 진행 중";
 }
 
 function renderStopBanner(stop) {
+  if (!stop) return "";
   const mode = loopStatusMode(stop);
   const label = loopStatusLabel(stop);
-  if (!stop) {
-    return `<form class="stop-inner stop-form" data-stop-form>
-      <div class="stop-copy">
-        <span class="stop-label">${label}</span>
-        <span class="stop-detail" data-tip="정지 사유를 입력하면 협업 루프에 정지 요청을 보냅니다.">정지 사유를 입력하면 협업 루프에 정지 요청을 보냅니다.</span>
-      </div>
-      <input class="stop-reason" id="stop-reason" autocomplete="off" placeholder="정지 사유 · 기본 user_stop">
-      <button class="stop-action stop-submit" type="submit">요청</button>
-    </form>`;
-  }
   const detail = stopDetailText(stop?.detail);
   const closed = mode === "closed";
   const meta = [stop?.by, stop?.reason].filter(Boolean).join(" · ");
   const time = stop?.time ? fmtTime(stop.time) : "";
-  const detailHtml = detail ? `<span class="stop-detail" data-tip="${esc(detail)}">${esc(detail)}</span>` : "";
+  const detailHtml = detail ? `<span class="stop-detail">${esc(detail)}</span>` : "";
   return `<div class="stop-inner">
     <div class="stop-copy">
       <span class="stop-label">${label}</span>
@@ -265,7 +307,7 @@ function renderReplyBox(m, canReply) {
   if (!canReply || replyOpenId !== m.id) return "";
   return `<div class="reply-box" data-to="${esc(m.from)}" data-reply="${esc(m.id)}">
     <div class="reply-row">
-      <input class="reply-in" type="text" placeholder="${esc(m.from)}에게 답장…">
+      <input class="reply-in" type="text" placeholder="${esc(agentLabel(m.from))}에게 답장…">
       <button class="iconbtn send reply-go" type="button" data-tip="보내기" aria-label="보내기">${ICON_SEND}</button>
     </div>
     <div class="mention-menu"></div>
@@ -278,8 +320,8 @@ function renderMsg(m, acks) {
   return `<div class="card msg" data-id="${esc(m.id)}">
     <span class="msg-actions inline-actions">${renderMessageActions(m, canReply)}</span>
     <div class="head">
-      <span class="route">${esc(m.from)} → ${esc(m.to)}</span>
-      <span class="tag kind ${cls(m.kind)}">${esc(m.kind)}</span>
+      <span class="route">${esc(agentLabel(m.from))} → ${esc(agentLabel(m.to))}</span>
+      <span class="tag kind ${cls(m.kind)}">${esc(kindLabel(m.kind))}</span>
       ${securityMark(m)}
       <span>${fmtTime(m.time)}</span>
       ${renderAcks(ackers, m.from)}
@@ -299,7 +341,21 @@ let sideTab = SIDE_TABS.includes(storedSideTab) ? storedSideTab : "work";
 const taskTextOpen = new Set();
 const STATE_LABEL = {submitted:"대기", working:"진행 중", input_required:"확인 필요",
                      completed:"완료", failed:"오류", canceled:"취소"};
+const AGENT_STATE_LABEL = {running:"진행 중", waiting:"대기", done:"완료", error:"오류"};
 const SKILL_EVIDENCE_LABEL = {grounding:"근거", check:"확인", gap:"빈틈", risk:"위험"};
+const BRIDGE_EVENT_LABEL = {
+  "message.created": "새 메시지",
+  "message.deleted": "메시지 삭제",
+  "message.acked": "메시지 확인",
+  "message.delivered": "메시지 전달",
+  "task.created": "새 작업",
+  "task.state": "작업 상태",
+  "task.deleted": "작업 삭제",
+  "ticket.created": "새 티켓",
+  "ticket.accepted": "티켓 진행",
+  "ticket.rejected": "티켓 종료",
+};
+const BRIDGE_ACCESS_LABEL = {"local only": "로컬", "local origin": "로컬 요청"};
 function skillHealth(s) {
   if (s.state === "active" && !(s.warnings || []).length) return "ok";
   if (s.state === "invalid" || s.state === "broken") return "problem";
@@ -316,6 +372,14 @@ function agentHealth(a) {
   return "ok";
 }
 const HEALTH_LABEL = {ok:"정상", warning:"주의", problem:"오류"};
+function bridgeEventLabel(value) {
+  return String(value || "").split(/\s*,\s*/).filter(Boolean)
+    .map(v => BRIDGE_EVENT_LABEL[v] || v).join(", ");
+}
+function bridgeAccessLabel(value) {
+  const key = String(value || "").trim();
+  return BRIDGE_ACCESS_LABEL[key] || key;
+}
 let sideTabAnimTimer = null;
 let sideTabSyncTimer = null;
 function moveSideTabThumb(animate = false) {
@@ -375,7 +439,7 @@ function renderTicket(ticket) {
   const id = ticket.issue_id || ticket.ticket_id;
   const refsHtml = renderRefsExpander(ticket.refs || []);
   return `<div class="todo ticket" data-ticket="${esc(id)}">
-    <span class="todo-mark submitted"></span>
+    ${statusMark("submitted", "대기")}
     <div class="todo-body">
       <div class="todo-text">${esc(ticket.title || "(제목 없음)")}</div>
       ${ticket.body ? `<div class="todo-desc">${esc(ticket.body)}</div>` : ""}
@@ -397,18 +461,18 @@ function renderTicket(ticket) {
   </div>`;
 }
 function renderTask(t) {
-  const assignStr = (t.assign || []).length ? t.assign.map(esc).join(", ") : "";
+  const assignStr = (t.assign || []).length ? t.assign.map(a => esc(agentDisplay(a))).join(", ") : "";
   const c = t.created_at ? new Date(t.created_at).getTime() / 1000 : "";
   const u = t.updated_at ? new Date(t.updated_at).getTime() / 1000 : "";
   const opts = TASK_STATES.map(s =>
-    `<div class="tdd-opt ${s === t.state ? "sel" : ""}" data-task="${esc(t.task_id)}" data-state="${esc(s)}">` +
-    `<span class="tdot ${cls(s)}"></span>${STATE_LABEL[s] || s}</div>`).join("");
+    `<button type="button" class="tdd-opt ${s === t.state ? "sel" : ""}" data-task="${esc(t.task_id)}" data-state="${esc(s)}">` +
+    `${statusMark(s, STATE_LABEL[s] || s, "tdot")}${STATE_LABEL[s] || s}</button>`).join("");
   const descHtml = t.note
     ? `<div class="todo-desc${taskTextOpen.has(t.task_id) ? "" : " clamp"}">${esc(t.note)}</div>` +
       `<button type="button" class="todo-more" hidden>더보기</button>`
     : "";
   return `<div class="todo ${cls(t.state)}" data-task="${esc(t.task_id)}">
-    <span class="todo-mark ${cls(t.state)}"></span>
+    ${statusMark(t.state, STATE_LABEL[t.state] || t.state)}
     <div class="todo-body">
       <div class="todo-text">${esc(t.title || "(제목 없음)")}</div>
       ${descHtml}
@@ -453,23 +517,32 @@ function renderAgentAuth(name) {
   if (!AUTH_AGENT_NAMES.has(name)) return "";
   return `<span class="security-mark agent-auth" data-tip="보안 권한" aria-label="보안 권한">${ICON_UNLOCK}</span>`;
 }
+function agentStateText(a = {}) {
+  const state = String(a.state || "");
+  return AGENT_STATE_LABEL[state] || (state ? state : "확인 필요");
+}
+function agentStateMark(a = {}) {
+  const state = String(a.state || "");
+  const marker = {running:"working", waiting:"submitted", done:"completed", error:"failed"}[state] || "input_required";
+  return statusMark(marker, agentStateText(a), "agent-state-mark");
+}
 function renderAgent(name, a) {
   const task = a.task ? idPill("task", a.task, {"data-task": a.task}, "agent-task") : "";
-  const health = agentHealth(a);
+  const display = agentLabel(name);
+  const stateText = agentStateText(a);
   return `<div class="summary-card agent ${filterAgents.has(name) ? "on" : ""}" data-agent="${esc(name)}" data-hb="${a.heartbeat || ""}">
     <div class="summary-head agent-head">
-      <span class="summary-title agent-name">${esc(name)}</span>
+      <span class="summary-title agent-name"><span class="agent-name-text">${esc(display)}</span>${renderAgentBadges(a)}</span>
       <span class="agent-status">
         <span class="beat"><span class="age"></span></span>
+        <span class="agent-status-sep" aria-hidden="true">·</span>
+        ${stateText ? `<span class="agent-state-text">${esc(stateText)}</span>` : ""}
         ${renderAgentAuth(name)}
-        ${healthMark(health, HEALTH_LABEL[health])}
+        ${agentStateMark(a)}
       </span>
     </div>
-    ${task ? `<div class="summary-meta agent-meta">${task}</div>` : ""}
     ${a.note ? `<div class="agent-note">${esc(a.note)}</div>` : ""}
-    <div class="agent-actions inline-actions">
-      <button type="button" class="msg-act msg-del agent-del" data-tip="제거" aria-label="제거" data-delete-agent="${esc(name)}">${ICON_TRASH}</button>
-    </div>
+    <div class="summary-meta agent-meta">${idPill("agent", name, {}, "idpill-compact")}${task}</div>
   </div>`;
 }
 function renderSkill(s) {
@@ -510,16 +583,16 @@ function bridgeTargetPills(targets = []) {
   const cleaned = (targets || []).filter(Boolean);
   if (!cleaned.length) return `<span class="bridge-target-muted">-</span>`;
   return cleaned.map(t => {
-    if (t === "all" || t === "*") return `<span class="bridge-target-muted">${esc(t)}</span>`;
-    const exists = AGENT_NAMES.includes(t);
-    const attrs = exists ? {"data-agent": t} : {"aria-disabled": "true"};
+    const agentId = agentIdForRef(t);
+    const exists = !!agentId;
+    const attrs = exists ? {"data-agent": agentId} : {"aria-disabled": "true"};
     const extra = exists ? "idpill-compact bridge-target" : "idpill-compact bridge-target bridge-target-missing";
-    return idPill("agent", t, attrs, extra);
+    return exists ? agentPill(agentId, attrs, extra) : idPill("agent", "삭제됨", attrs, extra);
   }).join("");
 }
 function bridgeMatcherLine(p) {
   const bits = [];
-  if (p.event) bits.push(`<span class="bridge-event">${esc(p.event)}</span>`);
+  if (p.event) bits.push(`<span class="bridge-event">${esc(bridgeEventLabel(p.event))}</span>`);
   const kinds = (p.matcherKinds || []).filter(Boolean);
   if (kinds.length) bits.push(`<code class="bridge-kind">${esc(kinds.join(", "))}</code>`);
   const extras = [...(p.matcherActors || []), ...(p.matcherObjectTypes || []), ...(p.matcherObjectIds || [])].filter(Boolean);
@@ -535,7 +608,7 @@ function renderBridgeProfile(p, runtime = {}) {
     ? `<span class="bridge-time" data-position-time="${esc(runtime.positionUpdatedAt)}"></span>`
     : "";
   const meta = [
-    runtime.failureCount ? `failures ${runtime.failureCount}` : "",
+    runtime.failureCount ? `오류 ${runtime.failureCount}건` : "",
     state === "needs_config" ? "설정 필요" : "",
     warnings.length ? `주의 ${warnings.length}건` : "",
   ].filter(Boolean);
@@ -556,12 +629,12 @@ function renderBridgeProfile(p, runtime = {}) {
   </div>`;
 }
 function renderBridgeGateway(g) {
-  const meta = [g.protocol || "", g.access || ""].filter(Boolean);
+  const meta = [g.protocol || "", bridgeAccessLabel(g.access)].filter(Boolean);
   const state = g.state || "ready";
   const health = bridgeHealth(state);
   return `<div class="summary-card bridge-card gateway ${cls(state)}">
     <div class="summary-head">
-      <span class="summary-title">${esc(g.name || "Gateway")}</span>
+      <span class="summary-title">${esc(g.name || "게이트웨이")}</span>
       ${healthMark(health, HEALTH_LABEL[health])}
     </div>
     <div class="bridge-route">
@@ -570,12 +643,25 @@ function renderBridgeGateway(g) {
     <div class="summary-meta">${meta.map(v => `<span>${esc(v)}</span>`).join("")}</div>
   </div>`;
 }
+function bridgeRuntimeForProfile(statusByName, name) {
+  return statusByName.get(name) || statusByName.get(`teammate/${name}`) || statusByName.get(`bridge/${name}`) || {};
+}
+function bridgeRuntimeRank(runtime = {}, profile = {}) {
+  if ((runtime.failureCount || 0) > 0) return 0;
+  if (profile.state && profile.state !== "ready") return 1;
+  if ((profile.warnings || []).length) return 2;
+  if (runtime.positionUpdatedAt) return 3;
+  return 4;
+}
 function updateAgentAges(now) {
   for (const card of document.querySelectorAll("#agents .agent")) {
-    const beat = card.querySelector(".beat"), ageEl = card.querySelector(".age");
-    if (!ageEl) continue;
+    const beat = card.querySelector(".beat"), ageEl = card.querySelector(".age"), sep = card.querySelector(".agent-status-sep");
+    if (!beat || !ageEl) continue;
     const hb = parseFloat(card.dataset.hb);
-    if (isNaN(hb)) { ageEl.textContent = "없음"; continue; }
+    const hasBeat = !isNaN(hb);
+    beat.hidden = !hasBeat;
+    if (sep) sep.hidden = !hasBeat;
+    if (!hasBeat) { ageEl.textContent = ""; continue; }
     const age = now - hb;
     ageEl.textContent = fmtAge(age);
   }
@@ -613,7 +699,7 @@ window.addEventListener("resize", syncSideTabThumbAfterLayout);
 function invalidatePanelSig(panel) {
   if (panel === "tickets") sigTickets = null;
   else if (panel === "tasks") sigTasks = null;
-  else if (panel === "completed") sigAssess = null;
+  else if (panel === "completed") sigCompleted = null;
   else if (panel === "skills") sigSkills = null;
   else if (panel === "agents") sigAgents = null;
   else if (panel === "bridgeProfiles" || panel === "bridgeGateways") sigBridges = null;
@@ -676,32 +762,16 @@ async function clearDone() {
 }
 
 // 섹션별 시그니처가 바뀔 때만 다시 그린다.
-let sigStop = null, sigMsg = null, sigTickets = null, sigTasks = null, sigAssess = null, sigSkills = null, sigAgents = null, sigBridges = null, sigDD = null;
-function resetSigs() { sigStop = sigMsg = sigTickets = sigTasks = sigAssess = sigSkills = sigAgents = sigBridges = sigDD = null; }
+let sigStop = null, sigMsg = null, sigTickets = null, sigTasks = null, sigCompleted = null, sigKeyContext = null, sigSkills = null, sigAgents = null, sigBridges = null, sigDD = null;
+function resetSigs() { sigStop = sigMsg = sigTickets = sigTasks = sigCompleted = sigKeyContext = sigSkills = sigAgents = sigBridges = sigDD = null; }
 function sig(...parts) { return JSON.stringify(parts); }
 
-let loopPanelOpen = false, loopPanelKeyNow = "", focusStopReason = false;
-function loopPanelKey() {
-  return "agentbus.loopPanelOpen." + (STATE_ROOT || location.pathname || "default");
-}
+let loopPanelOpen = false;
 function syncLoopPanelKey() {
-  const key = loopPanelKey();
-  if (key === loopPanelKeyNow) return;
-  loopPanelKeyNow = key;
-  try { loopPanelOpen = localStorage.getItem(key) === "1"; }
-  catch { loopPanelOpen = false; }
-  sigStop = null;
-}
-function setLoopPanelOpen(open) {
-  loopPanelOpen = !!open;
-  try { localStorage.setItem(loopPanelKey(), loopPanelOpen ? "1" : "0"); }
-  catch {}
-  if (loopPanelOpen) focusStopReason = true;
-  sigStop = null;
-  refresh();
-}
-function toggleLoopPanel() {
-  setLoopPanelOpen(!loopPanelOpen);
+  if (loopPanelOpen) {
+    loopPanelOpen = false;
+    sigStop = null;
+  }
 }
 function setLoopModeClasses(el, mode) {
   el.classList.toggle("loop-open", mode === "open");
@@ -712,11 +782,22 @@ function updateLoopStateButton(stop) {
   const btn = byId("loopstate");
   if (!btn) return;
   const mode = loopStatusMode(stop);
-  btn.textContent = loopStatusLabel(stop);
+  const label = loopStatusLabel(stop);
+  if (btn.dataset.loopMode !== mode) {
+    btn.innerHTML = `<span class="loop-route" aria-hidden="true">
+      <span class="loop-road"></span>
+      <span class="loop-bus">${icon("bus")}</span>
+    </span><span class="sr-only">${esc(label)}</span>`;
+    btn.dataset.loopMode = mode;
+  } else {
+    const text = btn.querySelector(".sr-only");
+    if (text) text.textContent = label;
+  }
+  btn.setAttribute("aria-label", label);
   setLoopModeClasses(btn, mode);
-  btn.classList.toggle("on", loopPanelOpen);
-  btn.setAttribute("aria-expanded", loopPanelOpen ? "true" : "false");
-  setTip(btn, "루프 상태 패널 " + (loopPanelOpen ? "접기" : "열기"));
+  btn.classList.remove("on");
+  btn.removeAttribute("aria-expanded");
+  setTip(btn, label);
   requestAnimationFrame(fitProjectBadge);
 }
 
@@ -738,8 +819,11 @@ function hasFacetFilters() {
 function hasTimelineConstraints() {
   return hasFacetFilters() || !!searchQuery;
 }
+function filterAgentKey(ref) {
+  return agentIdForRef(ref) || String(ref || "");
+}
 function passesFilter(m) {
-  if (filterAgents.size && !filterAgents.has(m.from) && !filterAgents.has(m.to)) return false;
+  if (filterAgents.size && !filterAgents.has(filterAgentKey(m.from)) && !filterAgents.has(filterAgentKey(m.to))) return false;
   if (filterTasks.size && !filterTasks.has(m.task_id)) return false;
   if (filterKinds.size && !filterKinds.has(m.kind || "")) return false;
   if (searchQuery && !(((m.subject || "") + " " + (m.body || "")).toLowerCase().includes(searchQuery))) return false;
@@ -800,22 +884,12 @@ function updateProjectRoot(root) {
   fitProjectBadge();
 }
 function updateStopPanel(stop) {
-  const stopPanelSig = sig(stop || null, loopPanelOpen);
+  const stopPanelSig = sig(stop || null, false);
   if (stopPanelSig === sigStop) return;
   sigStop = stopPanelSig;
   const bar = byId("stopbar");
-  if (loopPanelOpen) {
-    const mode = loopStatusMode(stop);
-    bar.classList.add("open");
-    setLoopModeClasses(bar, mode);
-    bar.innerHTML = renderStopBanner(stop);
-    if (focusStopReason && !stop) {
-      focusStopReason = false;
-      requestAnimationFrame(() => byId("stop-reason")?.focus());
-    }
-  } else {
-    bar.classList.remove("open");
-  }
+  bar.classList.remove("open");
+  bar.innerHTML = "";
 }
 function updateMessagePanel(st, acks) {
   lastMsgs = st.messages; lastAcks = acks;
@@ -839,7 +913,7 @@ function updateTicketPanel(tickets) {
   });
 }
 function updateTaskPanel(tasks, now) {
-  const taskSig = sig(tasks, panelExpanded.tasks);
+  const taskSig = sig(tasks, panelExpanded.tasks, agentLabelSig());
   if (taskSig !== sigTasks) {
     sigTasks = taskSig;
     byId("tasks").innerHTML = renderPanelList(tasks, {
@@ -860,8 +934,8 @@ function updateCompletedPanel(tasks, taskReports) {
   const reportsByTask = new Map(taskReports.map(r => [r.task_id, r]));
   const completed = tasks.filter(t => t.state === "completed");
   const completedSig = sig(completed, taskReports, panelExpanded.completed, filterSig());
-  if (completedSig === sigAssess) return;
-  sigAssess = completedSig;
+  if (completedSig === sigCompleted) return;
+  sigCompleted = completedSig;
   byId("completed").innerHTML = renderPanelList(completed, {
     expanded: panelExpanded.completed,
     limit: PANEL_LIMIT.completed,
@@ -890,7 +964,7 @@ function updateSkillPanel(skills) {
   });
 }
 function updateAgentPanel(agents, now) {
-  const agentSig = sig(AGENT_NAMES.map(n => [n, agents[n].state, agents[n].task, agents[n].note, agents[n].updated_at, AUTH_AGENT_NAMES.has(n)]), panelExpanded.agents);
+  const agentSig = sig(AGENT_NAMES.map(n => [n, AGENT_LABELS[n], agents[n].state, agents[n].task, agents[n].note, agents[n].updated_at, agents[n].role, agents[n].runnerProfile, agents[n].runnerProfileSource, AUTH_AGENT_NAMES.has(n)]), panelExpanded.agents);
   if (agentSig !== sigAgents) {
     sigAgents = agentSig;
     byId("agents").innerHTML = renderPanelList(AGENT_NAMES, {
@@ -909,43 +983,93 @@ function updateBridgePanel(profiles, bridges, gateways, now) {
   profiles = profiles || [];
   bridges = bridges || [];
   gateways = gateways || [];
-  const bridgeSig = sig(profiles, bridges, gateways, AGENT_NAMES, panelExpanded.bridgeProfiles, panelExpanded.bridgeGateways);
+  const bridgeSig = sig(profiles, bridges, gateways, AGENT_NAMES, agentLabelSig(), panelExpanded.bridgeProfiles, panelExpanded.bridgeGateways);
   if (bridgeSig === sigBridges) { updateBridgeAges(now); return; }
   sigBridges = bridgeSig;
   const statusByName = new Map(bridges.map(row => [row.name, row]));
-  byId("bridge-profiles").innerHTML = renderPanelList(profiles, {
+  const profilesForDisplay = [...profiles].sort((a, b) => {
+    const ar = bridgeRuntimeForProfile(statusByName, a.name);
+    const br = bridgeRuntimeForProfile(statusByName, b.name);
+    return bridgeRuntimeRank(ar, a) - bridgeRuntimeRank(br, b) || String(a.name || "").localeCompare(String(b.name || ""));
+  });
+  byId("bridge-profiles").innerHTML = renderPanelList(profilesForDisplay, {
     expanded: panelExpanded.bridgeProfiles,
     limit: PANEL_LIMIT.bridgeProfiles,
-    renderItem: profile => renderBridgeProfile(profile, statusByName.get(profile.name) || {}),
-    emptyHtml: panelEmpty("Local profile 없음"),
+    renderItem: profile => renderBridgeProfile(profile, bridgeRuntimeForProfile(statusByName, profile.name)),
+    emptyHtml: panelEmpty("프로필 없음"),
     moreAction: "bridge_profiles_more",
     lessAction: "bridge_profiles_less",
-    moreLabel: n => `Profile ${n}개 더 보기`,
+    moreLabel: n => `프로필 ${n}개 더 보기`,
   });
   byId("bridge-gateways").innerHTML = renderPanelList(gateways, {
     expanded: panelExpanded.bridgeGateways,
     limit: PANEL_LIMIT.bridgeGateways,
     renderItem: renderBridgeGateway,
-    emptyHtml: panelEmpty("Gateway 없음"),
+    emptyHtml: panelEmpty("게이트웨이 없음"),
     moreAction: "bridge_gateways_more",
     lessAction: "bridge_gateways_less",
-    moreLabel: n => `Gateway ${n}개 더 보기`,
+    moreLabel: n => `게이트웨이 ${n}개 더 보기`,
   });
   updateBridgeAges(now);
 }
+
+function renderKeyContext(doc) {
+  doc = doc || {};
+  const body = String(doc.body || "");
+  const signature = sig(body, doc.updatedAt, doc.updatedBy, doc.revision);
+  if (signature === sigKeyContext) return;
+  sigKeyContext = signature;
+  KEY_CONTEXT = {
+    schemaVersion: doc.schemaVersion || "agentbus.key-context.v1",
+    body,
+    updatedAt: doc.updatedAt || "",
+    updatedBy: doc.updatedBy || "",
+    revision: Number(doc.revision || 0),
+  };
+  const card = byId("key-context-card");
+  const bodyEl = byId("key-context-body");
+  const metaEl = byId("key-context-meta");
+  bodyEl.textContent = body || "현재 Key Context가 없습니다.";
+  bodyEl.classList.toggle("empty", !body);
+  metaEl.textContent = KEY_CONTEXT.updatedAt ? fmtTime(KEY_CONTEXT.updatedAt) : "";
+  card.classList.toggle("empty", !body);
+  updateKeyContextLayout();
+}
+
+function updateKeyContextLayout() {
+  const card = byId("key-context-card");
+  const btn = byId("toggle-key-context-lines");
+  if (!card || !btn) return;
+  card.classList.toggle("compact", keyContextCompact);
+  const label = keyContextCompact ? "펼치기" : "접기";
+  btn.setAttribute("aria-label", label);
+  setTip(btn, label);
+}
+
+function toggleKeyContextLines() {
+  keyContextCompact = !keyContextCompact;
+  try { localStorage.setItem("keyContextCompact", keyContextCompact ? "1" : "0"); } catch {}
+  updateKeyContextLayout();
+}
+
 function updateComposeOptions(cards, tasks) {
   lastTasks = tasks;
   const recipients = [...new Set([...AGENT_NAMES, ...Object.keys(cards)])].sort();
   RECIPIENT_NAMES = recipients.filter(n => n && n !== "all");
-  const ddSig = sig(recipients, tasks.map(t => [t.task_id, t.title]), composeTo, composeTask);
+  const defaultTo = LEAD_AGENT_ID || "all";
+  const ddSig = sig(recipients.map(n => [n, agentLabel(n)]), tasks.map(t => [t.task_id, t.title]), composeTo, composeTask, defaultTo, composeToTouched);
   if (ddSig === sigDD) return;
   sigDD = ddSig;
-  toOptions = recipients.map(n => ({value:n, label:n, sub:(cards[n] && cards[n].name && cards[n].name !== n) ? cards[n].name : ""}))
-    .concat({value:"all", label:"all"});
+  toOptions = recipients.map(n => ({value:n, label:agentLabel(n), sub:(cards[n] && cards[n].name && cards[n].name !== n) ? cards[n].name : ""}))
+    .concat({value:"all", label:"전체"});
   RECIPIENT_OPTIONS = toOptions.filter(o => o.value && o.value !== "all");
-  if (!toOptions.some(o => o.value === composeTo)) composeTo = toOptions.length ? toOptions[0].value : "all";
-  buildDD("dd-to", toOptions, composeTo, pickTo);
-  rebuildTaskDD();
+  if (!composeToTouched) composeTo = "all";
+  if (composeToTouched && !toOptions.some(o => o.value === composeTo)) {
+    composeTo = "all";
+    composeToTouched = false;
+  }
+  if (composeTask && !lastTasks.some(t => t.task_id === composeTask)) composeTask = "";
+  renderComposeTokens();
 }
 
 async function refresh() {
@@ -955,7 +1079,13 @@ async function refresh() {
   byId("refreshed").textContent = "";
   updateProjectRoot(st.root);
   const agents = st.status.agents || {};
-  AGENT_NAMES = Object.keys(agents).sort();
+  AGENT_NAMES = Object.keys(agents).sort((a, b) => {
+    const la = String((agents[a] && (agents[a].name || agents[a].displayName)) || a);
+    const lb = String((agents[b] && (agents[b].name || agents[b].displayName)) || b);
+    return la.localeCompare(lb) || a.localeCompare(b);
+  });
+  AGENT_LABELS = Object.fromEntries(AGENT_NAMES.map(id => [id, String((agents[id] && (agents[id].name || agents[id].displayName)) || id)]));
+  LEAD_AGENT_ID = AGENT_NAMES.find(id => isLeadAgent(agents[id] || {})) || "";
   AUTH_AGENT_NAMES = new Set(((st.auth && st.auth.agents) || [])
     .filter(row => row && row.canReadRestricted && row.agent)
     .map(row => String(row.agent)));
@@ -964,6 +1094,7 @@ async function refresh() {
   syncLoopPanelKey();
   updateLoopStateButton(st.stop);
   updateStopPanel(st.stop);
+  renderKeyContext(st.key_context || st.keyContext || {});
 
   updateMessagePanel(st, ackIndex(st.acks));
   updateTicketPanel(byCreatedDesc(st.tickets || st.issues));
@@ -995,6 +1126,7 @@ function modalShell(html, setup) {
     ov.className = "modal-ov";
     ov.innerHTML = html;
     document.body.appendChild(ov);
+    hydrateIcons(ov);
     requestAnimationFrame(() => ov.classList.add("show"));
     function done(val) {
       if (settled) return;
@@ -1037,9 +1169,57 @@ function modal(opts) {
   });
 }
 
+function keyContextModal() {
+  return modalShell(`<div class="modal key-context-modal" role="dialog" aria-modal="true" aria-labelledby="key-context-modal-title">
+      <div class="modal-title" id="key-context-modal-title">Key Context 편집</div>
+      <div class="modal-note-row">
+        <div class="modal-note">이 작업 흐름을 어떤 관점에서 이어갈지 남깁니다.</div>
+        <button class="modal-help" type="button" aria-label="작성 기준" data-tip="- 상태나 메시지 요약보다, 이 흐름을 이해하고 판단할 기준을 중심으로 씁니다.
+- 사용자와 조율한 의도, 관점, 판단 기준을 남깁니다.
+- 이어지는 작업에서 참고할 배경과 판단 이유를 남깁니다."><span data-icon="circle-help"></span></button>
+      </div>
+      <textarea class="modal-textarea key-context-editor" spellcheck="false" placeholder="현재 작업 흐름에서 중요하게 볼 사용자 의도, 작업 배경, 방향성을 적습니다."></textarea>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn" data-act="cancel">취소</button>
+        <button type="button" class="modal-btn primary" data-act="ok">저장</button>
+      </div>
+    </div>`, (ov, done) => {
+    const textarea = ov.querySelector(".key-context-editor");
+    textarea.value = KEY_CONTEXT.body || "";
+    const cancel = () => done(null);
+    const ok = () => done(textarea.value);
+    ov.addEventListener("click", e => {
+      if (e.target === ov) return cancel();
+      const act = e.target.closest("[data-act]");
+      if (act) (act.dataset.act === "ok" ? ok : cancel)();
+    });
+    ov.addEventListener("keydown", e => {
+      if (e.key === "Escape") cancel();
+      else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); ok(); }
+    });
+    textarea.focus();
+  });
+}
+
+async function editKeyContext() {
+  const body = await keyContextModal();
+  if (body == null) return;
+  const r = await fetch("/api/key-context", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({body, by:"user", revision:KEY_CONTEXT.revision}),
+  });
+  if (!r.ok) {
+    await modal({message: "저장 실패: " + await r.text(), cancelText: null});
+    return;
+  }
+  resetSigs();
+  await refresh();
+}
+
 function viewerAuthModal() {
   return modalShell(`<div class="modal" role="dialog" aria-modal="true">
-      <div class="modal-msg">보안 보기를 사용할 사용자를 인증합니다.</div>
+      <div class="modal-title">보안 보기</div>
       <label class="modal-label">사용자</label>
       <input class="modal-input" data-field="viewer" type="text" autocomplete="username" placeholder="operator">
       <label class="modal-label">토큰</label>
@@ -1072,7 +1252,7 @@ function ticketModal(opts) {
     .map(o => typeof o === "string" ? {value:o, label:o} : o);
   let selected = choices.some(o => o.value === to) ? to : (choices[0] && choices[0].value) || to || "my-agent";
   return modalShell(`<div class="modal" role="dialog" aria-modal="true">
-      <div class="modal-msg">티켓을 진행할 에이전트와 코멘트를 확인합니다.</div>
+      <div class="modal-title">티켓 진행</div>
       <label class="modal-label">에이전트</label>
       <div class="dd modal-dd">
         <button type="button" class="dd-btn"><span class="dd-val"></span><span class="dd-caret"></span></button>
@@ -1116,17 +1296,19 @@ function updateFilterIndicator() {
   byId("filter-summary").textContent = bits.join(" · ");
 }
 function buildFilterUI() {
-  const parts = [...new Set(["user", ...lastMsgs.flatMap(m => [m.from, m.to])].filter(Boolean))].sort();
+  const parts = [...new Set([...AGENT_NAMES, "user", ...lastMsgs.flatMap(m => [filterAgentKey(m.from), filterAgentKey(m.to)])].filter(Boolean))]
+    .sort((a, b) => agentLabel(a).localeCompare(agentLabel(b)) || String(a).localeCompare(String(b)));
   document.querySelectorAll("#fp-kinds [data-kind]").forEach(btn =>
     btn.classList.toggle("on", filterKinds.has(btn.dataset.kind)));
   byId("fp-agents").innerHTML = parts.map(a =>
     `<div class="fp-opt ${filterAgents.has(a) ? "on" : ""}" data-a="${esc(a)}">` +
-    `<span class="fp-check"></span><span class="fp-label">${esc(a)}</span></div>`).join("")
+    `<span class="fp-check"></span><span class="fp-main">${esc(agentLabel(a))}</span>` +
+    `<span class="fp-meta">${agentLabel(a) === a ? "" : esc(a)}</span></div>`).join("")
     || `<div class="fp-empty">없음</div>`;
   byId("fp-tasks").innerHTML = lastTasks.map(t =>
-    `<div class="fp-opt fp-task-opt ${filterTasks.has(t.task_id) ? "on" : ""}" data-t="${esc(t.task_id)}" data-tip="${esc(t.title || "")}">` +
-    `<span class="fp-check"></span><span class="fp-task-main"><span>${idPill("task", t.task_id, {}, "idpill-compact")}</span>` +
-    `<span class="fp-task-title">${esc(t.title || "")}</span></span></div>`).join("")
+    `<div class="fp-opt ${filterTasks.has(t.task_id) ? "on" : ""}" data-t="${esc(t.task_id)}">` +
+    `<span class="fp-check"></span><span class="fp-main">${esc(t.task_id)}</span>` +
+    `<span class="fp-meta">${esc(t.title || "")}</span></div>`).join("")
     || `<div class="fp-empty">없음</div>`;
 }
 function syncFilterHighlights() {
@@ -1241,7 +1423,6 @@ document.addEventListener("mouseout", e => {
   if (tipTarget && !tipTarget.contains(e.relatedTarget)) { tipEl.classList.remove("show"); tipTarget = null; }
 });
 // 개요 스트립.
-const AGENT_STATE_LABEL = {running:"실행 중", waiting:"대기", done:"완료", error:"오류"};
 function updateOverview(st) {
   const ag = st.status.agents || {};
   const order = ["running", "waiting", "done", "error"];
@@ -1489,8 +1670,21 @@ timelineEl.addEventListener("keydown", e => {
 const agentsEl = byId("agents");
 
 // 작성 상태.
+const SENSITIVITY_OPTIONS = [
+  {value:"normal", label:"일반"},
+  {value:"internal", label:"내부"},
+  {value:"restricted", label:"제한"},
+];
+const COMPOSE_COMMANDS = [
+  {command:"agent", icon:"agent", main:"/agent", meta:"에이전트"},
+  {command:"task", icon:"list", main:"/task", meta:"작업"},
+  {command:"security", icon:"lock", main:"/security", meta:"보안"},
+];
+const COMPOSE_COMMAND_NAMES = COMPOSE_COMMANDS.map(c => c.command);
+const COMPOSE_COMMAND_PATTERN = COMPOSE_COMMAND_NAMES.join("|");
 let composeTo = "all", composeKind = "note", composeTask = "";
-let toOptions = [{value:"all", label:"all"}], taskOptions = [], lastTasks = [];
+let composeSensitivity = "normal";
+let toOptions = [{value:"all", label:"전체"}], lastTasks = [];
 
 // 드롭다운은 작성 패널과 모달이 같은 마크업과 동작을 쓴다.
 function buildDD(target, options, current, onPick, placeholder) {
@@ -1503,57 +1697,109 @@ function buildDD(target, options, current, onPick, placeholder) {
   valEl.textContent = cur ? cur.label : (placeholder || current || "");
   valEl.classList.toggle("placeholder", !cur);
   dd.querySelector(".dd-menu").innerHTML = opts.map(o =>
-    `<div class="dd-opt ${o.value === current ? "sel" : ""}" data-v="${esc(o.value)}">` +
-    `<span>${esc(o.label)}</span>${o.sub ? `<span class="sub">${esc(o.sub)}</span>` : ""}</div>`
-  ).join("") || `<div class="dd-opt muted">없음</div>`;
+    `<button type="button" class="dd-opt ${o.value === current ? "sel" : ""}" data-v="${esc(o.value)}">` +
+    `<span>${esc(o.label)}</span>${o.sub ? `<span class="sub">${esc(o.sub)}</span>` : ""}</button>`
+  ).join("") || `<div class="dd-empty muted">없음</div>`;
   dd.querySelectorAll(".dd-opt[data-v]").forEach(el => el.addEventListener("click", ev => {
     ev.stopPropagation(); dd.classList.remove("open"); onPick(el.getAttribute("data-v"));
   }));
 }
-function pickTo(v) { composeTo = v; buildDD("dd-to", toOptions, composeTo, pickTo); }
-// 작업 연결 드롭다운.
-function rebuildTaskDD() {
-  taskOptions = (composeTask ? [{value:"", label:"연결 해제"}] : [])
-    .concat(lastTasks.map(t => ({value:t.task_id, label:t.task_id, sub:t.title || ""})));
-  if (composeTask && !lastTasks.some(t => t.task_id === composeTask)) composeTask = "";
-  buildDD("dd-task", taskOptions, composeTask, pickTask, "작업 선택");
+function optionLabel(options, value) {
+  const found = options.find(o => (typeof o === "string" ? o : o.value) === value);
+  return found ? (typeof found === "string" ? found : found.label) : value;
 }
-function pickTask(v) { composeTask = v; rebuildTaskDD(); }
+
+function composeTaskTitle(taskId) {
+  return (lastTasks.find(t => t.task_id === taskId) || {}).title || "";
+}
+function renderComposeTokens() {
+  const label = byId("kind-token-label");
+  if (label) label.textContent = kindLabel(composeKind);
+  const kindToken = byId("kind-token");
+  if (kindToken) kindToken.className = `compose-token kind-token tag kind ${cls(composeKind || "note")}`;
+  document.querySelectorAll("#kind-pop button[data-v]").forEach(btn => btn.classList.toggle("on", btn.dataset.v === composeKind));
+  const meta = byId("compose-meta-chips");
+  if (!meta) return;
+  const chips = [];
+  if (composeToTouched && composeTo && composeTo !== "all") {
+    chips.push({kind:"agent", icon:"agent", label:agentLabel(composeTo), tip:composeTo, clear:"agent"});
+  }
+  if (composeTask) {
+    chips.push({kind:"task", icon:"list", label:composeTask, tip:composeTaskTitle(composeTask), clear:"task"});
+  }
+  if (composeSensitivity && composeSensitivity !== "normal") {
+    chips.push({kind:`security ${cls(composeSensitivity)}`, icon:"lock", label:optionLabel(SENSITIVITY_OPTIONS, composeSensitivity), tip:"보안", clear:"security"});
+  }
+  meta.innerHTML = chips.map(c =>
+    `<span class="compose-chip ${esc(c.kind)}" ${c.tip ? `data-tip="${esc(c.tip)}"` : ""}>` +
+    `${icon(c.icon)}<span class="chip-main">${esc(c.label)}</span>` +
+    `<button type="button" data-clear-compose="${esc(c.clear)}" aria-label="제거">${icon("x")}</button></span>`
+  ).join("");
+}
+
+function buildPolicyDDs() {
+  renderComposeTokens();
+}
 function closeDropdownMenus() {
   document.querySelectorAll(".dd.open").forEach(d => d.classList.remove("open"));
 }
+function closeKindMenu() {
+  const wrap = byId("compose-kind");
+  if (!wrap) return;
+  wrap.classList.remove("open");
+  byId("kind-token")?.setAttribute("aria-expanded", "false");
+}
 document.addEventListener("click", e => {
+  const clear = e.target.closest("[data-clear-compose]");
+  if (clear) {
+    e.preventDefault(); e.stopPropagation();
+    const what = clear.dataset.clearCompose;
+    if (what === "agent") { composeTo = "all"; composeToTouched = false; }
+    else if (what === "task") composeTask = "";
+    else if (what === "security") composeSensitivity = "normal";
+    renderComposeTokens();
+    return;
+  }
+  const kindToken = e.target.closest("#kind-token");
+  if (kindToken) {
+    e.preventDefault(); e.stopPropagation();
+    closeDropdownMenus();
+    const wrap = byId("compose-kind");
+    if (!wrap) return;
+    const open = !wrap.classList.contains("open");
+    wrap.classList.toggle("open", open);
+    kindToken.setAttribute("aria-expanded", open ? "true" : "false");
+    return;
+  }
+  const kindButton = e.target.closest("#kind-pop button[data-v]");
+  if (kindButton) {
+    e.preventDefault(); e.stopPropagation();
+    composeKind = kindButton.dataset.v;
+    renderComposeTokens();
+    closeKindMenu();
+    return;
+  }
   const btn = e.target.closest(".dd-btn");
   if (btn) {
     e.stopPropagation();
     const dd = btn.closest(".dd"), wasOpen = dd.classList.contains("open");
     closeDropdownMenus();
+    closeKindMenu();
     if (!wasOpen) dd.classList.add("open");
     return;
   }
   if (!e.target.closest(".dd")) closeDropdownMenus();
+  if (!e.target.closest("#compose-kind")) closeKindMenu();
 });
-
-// kind 세그먼트.
-const segEl = byId("seg-kind");
-const segThumb = document.createElement("div");
-segThumb.className = "seg-thumb";
-segEl.insertBefore(segThumb, segEl.firstChild);
-function moveSegThumb() {
-  const on = segEl.querySelector("button.on");
-  if (!on || !on.offsetWidth) return;
-  segThumb.style.width = on.offsetWidth + "px";
-  segThumb.style.transform = "translateX(" + on.offsetLeft + "px)";
-}
-segEl.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
-  composeKind = b.getAttribute("data-v");
-  segEl.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
-  moveSegThumb();
-}));
 
 // 본문 입력창 높이.
 const bodyEl = byId("body");
-function growBody() { bodyEl.style.height = "auto"; bodyEl.style.height = Math.min(bodyEl.scrollHeight, 140) + "px"; }
+function growBody() {
+  bodyEl.style.height = "auto";
+  const height = Math.min(bodyEl.scrollHeight, 140);
+  bodyEl.style.height = height + "px";
+  bodyEl.closest(".composer-field")?.classList.toggle("compose-multiline", height > 34 || bodyEl.value.includes("\n"));
+}
 
 // 파일 멘션 자동완성.
 const mentionEl = byId("mention");
@@ -1605,52 +1851,183 @@ function makeMention(inputEl, menuEl, onChange) {
   });
   return { close, isOpen: () => menuEl.classList.contains("open") };
 }
-const composeMention = makeMention(bodyEl, mentionEl, growBody);
+function makeComposePalette(inputEl, menuEl, onChange) {
+  let items = [], active = -1, start = -1, token = 0, mode = "";
+  const close = () => { menuEl.classList.remove("open"); items = []; active = -1; start = -1; mode = ""; };
+  function slashCtx(before, pos) {
+    const command = before.match(/(^|\s)\/([a-zA-Z]*)$/);
+    if (command && !COMPOSE_COMMAND_NAMES.includes(command[2].toLowerCase())) {
+      return {mode:"command", q:command[2].toLowerCase(), start:pos - command[2].length - 1};
+    }
+    const exact = before.match(new RegExp(`(^|\\s)\\/(${COMPOSE_COMMAND_PATTERN})(?:\\s+([^\\n/]*))?$`, "i"));
+    if (!exact) return null;
+    const leading = exact[1] || "";
+    return {
+      mode:exact[2].toLowerCase(),
+      q:String(exact[3] || "").trim().toLowerCase(),
+      start:pos - exact[0].length + leading.length,
+    };
+  }
+  function ctxOf() {
+    const pos = inputEl.selectionStart;
+    const before = inputEl.value.slice(0, pos);
+    const file = before.match(/(?:^|\s)@([^\s@]*)$/);
+    if (file) return {mode:"file", q:file[1], start:pos - file[1].length - 1};
+    return slashCtx(before, pos);
+  }
+  function commandItems(q) {
+    return COMPOSE_COMMANDS
+      .map(it => ({...it, mode:"command"}))
+      .filter(it => !q || it.command.startsWith(q));
+  }
+  function slashItems(ctx) {
+    if (ctx.mode === "command") return commandItems(ctx.q);
+    if (ctx.mode === "agent") {
+      return RECIPIENT_OPTIONS.map(o => ({
+        mode:"agent", value:o.value, icon:"agent", main:agentLabel(o.value), meta:o.value,
+      }));
+    }
+    if (ctx.mode === "task") {
+      return lastTasks.map(t => ({
+        mode:"task", value:t.task_id, icon:"list", main:t.task_id, meta:t.title || "",
+      }));
+    }
+    return SENSITIVITY_OPTIONS.map(o => ({
+      mode:"security", value:o.value, icon:o.value === "normal" ? "message" : "lock",
+      main:o.label, meta:o.value === "normal" ? "" : "보안",
+    }));
+  }
+  function filterItems(list, q) {
+    if (!q) return list;
+    return list.filter(it => `${it.main || ""} ${it.meta || ""}`.toLowerCase().includes(q));
+  }
+  async function update() {
+    const ctx = ctxOf();
+    if (!ctx) { close(); return; }
+    const t = ++token; let next = [];
+    if (ctx.mode === "file") {
+      try {
+        const files = (await (await fetch("/api/files?q=" + encodeURIComponent(ctx.q))).json()).files || [];
+        next = files.map(f => {
+          const cut = f.lastIndexOf("/") + 1;
+          return {mode:"file", value:f, icon:"message", main:f.slice(cut), meta:f.slice(0, cut)};
+        });
+      } catch { close(); return; }
+    } else {
+      next = filterItems(slashItems(ctx), ctx.q);
+    }
+    if (t !== token) return;
+    if (!next.length) { close(); return; }
+    items = next; start = ctx.start; mode = ctx.mode; active = 0; render();
+  }
+  function render() {
+    menuEl.innerHTML = items.map((it, i) =>
+      `<div class="mention-opt ${i === active ? "active" : ""}" data-i="${i}">` +
+      `<span class="mention-icon">${icon(it.icon || "message")}</span>` +
+      `<span class="mention-main">${esc(it.main || it.value || "")}</span>` +
+      `<span class="mention-meta">${esc(it.meta || "")}</span></div>`
+    ).join("");
+    menuEl.classList.add("open");
+    menuEl.querySelectorAll(".mention-opt").forEach(el =>
+      el.addEventListener("mousedown", ev => { ev.preventDefault(); insert(+el.dataset.i); }));
+    const a = menuEl.querySelector(".mention-opt.active"); if (a) a.scrollIntoView({ block: "nearest" });
+  }
+  function replaceToken(text, caretOffset = text.length) {
+    const before = inputEl.value.slice(0, start), after = inputEl.value.slice(inputEl.selectionStart);
+    inputEl.value = before + text + after;
+    const caret = before.length + caretOffset;
+    if (onChange) onChange();
+    inputEl.focus(); inputEl.setSelectionRange(caret, caret);
+  }
+  function removeCommandText() {
+    replaceToken("", 0);
+  }
+  function insert(i) {
+    const it = items[i]; if (!it) return;
+    if (it.mode === "file") {
+      replaceToken(it.value + " ");
+      close();
+      return;
+    }
+    if (it.mode === "command") {
+      replaceToken("/" + it.command + " ");
+      update();
+      return;
+    }
+    if (it.mode === "agent") { composeTo = it.value; composeToTouched = true; }
+    else if (it.mode === "task") composeTask = it.value;
+    else if (it.mode === "security") composeSensitivity = it.value;
+    removeCommandText();
+    renderComposeTokens();
+    close();
+  }
+  inputEl.addEventListener("input", () => { if (onChange) onChange(); update(); });
+  inputEl.addEventListener("blur", () => setTimeout(close, 150));
+  inputEl.addEventListener("keydown", e => {
+    if (!menuEl.classList.contains("open") || !items.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); active = (active + 1) % items.length; render(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); active = (active - 1 + items.length) % items.length; render(); }
+    else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insert(active); }
+    else if (e.key === "Escape") { e.preventDefault(); close(); }
+  });
+  return { close, isOpen: () => menuEl.classList.contains("open") };
+}
+const composeMention = makeComposePalette(bodyEl, mentionEl, growBody);
 
+const LEAD_REQUEST_KINDS = new Set(["task", "ticket", "stop"]);
+function messageSubjectForKind(kind, body) {
+  if (!LEAD_REQUEST_KINDS.has(kind)) return "";
+  return body.split(/\r?\n/).map(s => s.trim()).find(Boolean) || kindLabel(kind);
+}
 async function sendMessage() {
-  const body = bodyEl.value.trim();
+  let body = bodyEl.value.trim();
+  if (!body && composeKind === "stop") body = "정지 요청";
   if (!body) return;
   composeMention.close();
-  await post("/api/send", {to: composeTo, kind: composeKind, body, task_id: composeTask});
-  bodyEl.value = ""; growBody();
+  const kind = composeKind;
+  const target = (!composeToTouched && LEAD_AGENT_ID) ? LEAD_AGENT_ID : (composeTo || LEAD_AGENT_ID || "all");
+  const ok = await post("/api/send", {
+    to: target, kind, subject: messageSubjectForKind(kind, body), body, task_id: composeTask,
+    sensitivity: composeSensitivity,
+  });
+  if (!ok) return;
+  bodyEl.value = "";
+  if (LEAD_REQUEST_KINDS.has(kind)) composeKind = "note";
+  if (!composeToTouched) composeTo = "all";
+  growBody();
+  renderComposeTokens();
 }
 byId("compose").addEventListener("submit", e => { e.preventDefault(); sendMessage(); });
 bodyEl.addEventListener("keydown", e => {
   if (composeMention.isOpen()) return;
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); sendMessage(); }
 });
-byId("loopstate").addEventListener("click", toggleLoopPanel);
+byId("toggle-key-context-lines").addEventListener("click", toggleKeyContextLines);
+byId("edit-key-context").addEventListener("click", editKeyContext);
 const stopbarEl = byId("stopbar");
-stopbarEl.addEventListener("submit", e => {
-  if (e.target.closest("[data-stop-form]")) requestStopFromPanel(e);
-});
 stopbarEl.addEventListener("click", e => {
   const clear = e.target.closest("[data-clear-stop]");
   if (clear) { e.preventDefault(); clearStop(); }
 });
-stopbarEl.addEventListener("keydown", e => {
-  if (e.key === "Escape") setLoopPanelOpen(false);
-});
-async function requestStopFromPanel(e) {
-  if (e) e.preventDefault();
-  const input = byId("stop-reason");
-  const reason = (input?.value || "").trim() || "user_stop";
-  await post("/api/stop", {reason});
-}
 // 세션 정리.
 const settingsWrap = byId("settings-wrap");
 byId("rotatebtn").addEventListener("click", async () => {
   settingsWrap.classList.remove("open");
-  if (!await modal({message: "현재 메시지를 archive/로 보관하고 타임라인을 비웁니다. 계속할까요?", confirmText: "보관"})) return;
+  if (!await modal({message: "현재 메시지를 보관하고 타임라인을 비울까요?", confirmText: "보관"})) return;
   const r = await fetch("/api/rotate", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
   if (!r.ok) { await modal({message: "요청 실패: " + await r.text(), cancelText: null}); return; }
   const j = await r.json().catch(() => ({}));
-  await modal({message: j.archived ? "메시지를 보관함(archive/)으로 회전했습니다." : "보관할 메시지가 없습니다.", cancelText: null});
+  await modal({message: j.archived ? "메시지를 보관했습니다." : "보관할 메시지가 없습니다.", cancelText: null});
   resetSigs(); refresh();
 });
 byId("clearbtn").addEventListener("click", async () => {
   settingsWrap.classList.remove("open");
-  if (await modal({message: "현재 메시지·확인 기록을 비웁니다(작업·에이전트는 유지). 계속할까요?", confirmText: "비우기", danger: true})) post("/api/clear", {});
+  if (await modal({message: "메시지와 확인 기록을 비울까요? 작업과 에이전트는 유지됩니다.", confirmText: "비우기", danger: true})) post("/api/clear", {});
+});
+byId("force-stopbtn")?.addEventListener("click", async () => {
+  settingsWrap.classList.remove("open");
+  if (!await modal({message: "루프를 강제 정지할까요?", confirmText: "강제 정지", danger: true})) return;
+  await post("/api/force-stop", {reason:"force_stop"});
 });
 byId("viewer-authbtn").addEventListener("click", async () => {
   settingsWrap.classList.remove("open");
@@ -1676,30 +2053,7 @@ byId("viewer-authbtn").addEventListener("click", async () => {
   resetSigs();
   await refresh();
 });
-function setInlineFormOpen(form, button, focusEl, open) {
-  form.classList.toggle("open", open);
-  form.setAttribute("aria-hidden", open ? "false" : "true");
-  button.classList.toggle("open", open);
-  if (open) focusEl.focus();
-}
 // 티켓.
-const newticketBtn = byId("newticket");
-const newticketForm = byId("newticket-form");
-const newticketTitle = byId("newticket-title");
-function setNewticketOpen(open) {
-  setInlineFormOpen(newticketForm, newticketBtn, newticketTitle, open);
-}
-newticketBtn.addEventListener("click", () => setNewticketOpen(!newticketForm.classList.contains("open")));
-newticketForm.addEventListener("submit", async e => {
-  e.preventDefault();
-  const title = newticketTitle.value.trim();
-  if (!title) return;
-  newticketTitle.value = ""; setNewticketOpen(false);
-  await post("/api/ticket-new", {title});
-});
-newticketTitle.addEventListener("keydown", e => {
-  if (e.key === "Escape") { newticketTitle.value = ""; setNewticketOpen(false); }
-});
 function defaultAssignee() {
   return RECIPIENT_NAMES.find(n => n !== "user") || AGENT_NAMES.find(n => n !== "user") || "my-agent";
 }
@@ -1720,29 +2074,11 @@ byId("tickets").addEventListener("click", e => {
   const reject = e.target.closest("[data-reject-ticket]");
   if (reject) rejectTicket(reject.dataset.rejectTicket);
 });
-// 새 작업.
-const newtaskBtn = byId("newtask");
-const newtaskForm = byId("newtask-form");
-const newtaskTitle = byId("newtask-title");
-function setNewtaskOpen(open) {
-  setInlineFormOpen(newtaskForm, newtaskBtn, newtaskTitle, open);
-}
-newtaskBtn.addEventListener("click", () => setNewtaskOpen(!newtaskForm.classList.contains("open")));
-newtaskForm.addEventListener("submit", async e => {
-  e.preventDefault();
-  const title = newtaskTitle.value.trim();
-  if (!title) return;
-  newtaskTitle.value = ""; setNewtaskOpen(false);
-  await post("/api/task-new", {title, assign: []});
-});
-newtaskTitle.addEventListener("keydown", e => {
-  if (e.key === "Escape") { newtaskTitle.value = ""; setNewtaskOpen(false); }
-});
+// 작업.
 function setTaskState(id, state) { post("/api/task-state", {id, state}); }
-function deleteTask(id) { post("/api/task-delete", {id}); }
-async function deleteAgent(agent) {
-  if (await modal({message: `에이전트 '${agent}' 상태를 지울까요?`, confirmText: "제거", danger: true})) {
-    post("/api/agent-delete", {agent});
+async function deleteTask(id) {
+  if (await modal({message: "이 작업을 삭제할까요?", confirmText: "삭제", danger: true})) {
+    post("/api/task-delete", {id});
   }
 }
 async function clearStop() {
@@ -1750,8 +2086,6 @@ async function clearStop() {
 }
 agentsEl.addEventListener("click", e => {
   if (handlePanelToggle(e)) return;
-  const del = e.target.closest("[data-delete-agent]");
-  if (del) { e.stopPropagation(); deleteAgent(del.dataset.deleteAgent); return; }
   const chip = e.target.closest(".idpill[data-task]");
   if (chip) { e.stopPropagation(); jumpToTask(chip.dataset.task).catch(err => console.warn("task jump failed", err)); return; }
   const card = e.target.closest(".agent[data-agent]");
@@ -1836,7 +2170,7 @@ function closeFloatingSidePanel() {
   return true;
 }
 function isSidePanelInteractionTarget(target) {
-  return target instanceof Element && !!target.closest("#side, #toggleside");
+  return target instanceof Element && !!target.closest("#side, #toggleside, .modal-ov");
 }
 function closeFloatingSidePanelFromOutside(target) {
   if (!isFloatingSideOpen() || isSidePanelInteractionTarget(target)) return;
@@ -1852,9 +2186,6 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && closeFloatingSidePanel()) e.stopPropagation();
 }, true);
 byId("togglecompose").addEventListener("click", () => flip("composeOpen"));
-byId("closecompose").addEventListener("click", () => {
-  localStorage.setItem("composeOpen", "0"); applyLayout();
-});
 function onSideModeChange() {
   document.body.classList.add("side-mode-switching");
   applyLayout();
@@ -1893,10 +2224,10 @@ sizeSlider.addEventListener("input", () => { localStorage.setItem("textsize", si
 applyTextSize();
 byId("settingsbtn").addEventListener("click", (e) => { e.stopPropagation(); settingsWrap.classList.toggle("open"); });
 document.addEventListener("click", (e) => { if (!e.target.closest("#settings-wrap")) settingsWrap.classList.remove("open"); });
-moveSegThumb();
+buildPolicyDDs();
 updateFilterIndicator();
 
 // 첫 페인트 뒤 애니메이션을 켠다.
-requestAnimationFrame(() => requestAnimationFrame(() => { document.body.classList.remove("no-anim"); moveSegThumb(); moveSideTabThumb(); }));
+requestAnimationFrame(() => requestAnimationFrame(() => { document.body.classList.remove("no-anim"); moveSideTabThumb(); }));
 
 refresh(); setInterval(refresh, 2500);

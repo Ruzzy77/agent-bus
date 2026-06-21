@@ -270,6 +270,7 @@ class Handler(BaseHTTPRequestHandler):
                 "status": agent_bus.load_json(ps["status"], {"agents": {}}),
                 "auth": {"agents": agent_bus.auth_rows(self.bus_dir), "viewers": agent_bus.viewer_auth_rows(self.bus_dir)},
                 "viewer": {"authenticated": raw_restricted, "name": viewer_session.get("viewer", "") if viewer_session else ""},
+                "key_context": agent_bus.key_context_doc(self.bus_dir),
                 "stop": agent_bus.load_json(ps["stop"], None) if agent_bus.path_exists(ps["stop"]) else None,
                 "tasks": [view_record(row) for row in agent_bus.fold_tasks(self.bus_dir)],
                 "task_reports": agent_bus.task_report_rows(self.bus_dir, max_body_chars=160, raw_restricted=raw_restricted),
@@ -335,7 +336,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(403, {"error": "bus-dir mismatch"})
                 return
             env = data.get("env") if isinstance(data.get("env"), dict) else {}
-            result = agent_bus.run_cli_in_capsule(argv, {str(k): str(v) for k, v in env.items() if k == "AGENTBUS_AGENT_TOKEN"})
+            stdin_text = data.get("stdin") if isinstance(data.get("stdin"), str) else ""
+            result = agent_bus.run_cli_in_capsule(argv, {str(k): str(v) for k, v in env.items() if k == "AGENTBUS_AGENT_TOKEN"}, stdin_text)
             self._json(200, result)
         elif path == "/api/viewer-login":
             viewer = agent_bus._clean_text(data.get("viewer"))
@@ -367,6 +369,19 @@ class Handler(BaseHTTPRequestHandler):
                 if morsel:
                     _dashboard_sessions.pop(_session_digest(morsel.value), None)
             self._json(200, {"ok": True}, {"Set-Cookie": _session_cookie("", 0)})
+        elif path == "/api/key-context":
+            try:
+                doc = agent_bus.set_key_context(
+                    self.bus_dir,
+                    str(data.get("body") or ""),
+                    data.get("by") or "user",
+                    int(data["revision"]) if data.get("revision") is not None else None,
+                )
+            except ValueError as exc:
+                message = str(exc)
+                self._json(409 if "changed" in message else 400, {"error": message})
+                return
+            self._json(200, doc)
         elif path == "/api/send":
             subject = agent_bus._clean_text(data.get("subject"))
             body = agent_bus._clean_text(data.get("body"))
@@ -375,8 +390,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 msg = agent_bus.make_message(
-                    data.get("from") or "user",
-                    data.get("to") or "all",
+                    agent_bus.resolve_message_party(self.bus_dir, data.get("from") or "user"),
+                    agent_bus.resolve_message_party(self.bus_dir, data.get("to") or "all"),
                     data.get("kind") or "note",
                     subject,
                     body,
@@ -384,7 +399,6 @@ class Handler(BaseHTTPRequestHandler):
                     data.get("task_id") or "",
                     data.get("reply_to") or "",
                     data.get("sensitivity") or "",
-                    data.get("retention") or "",
                 )
                 agent_bus.append_message(self.bus_dir, msg)
             except ValueError as exc:
@@ -430,7 +444,6 @@ class Handler(BaseHTTPRequestHandler):
                     data.get("assign"),
                     data.get("id") or "",
                     data.get("sensitivity") or "",
-                    data.get("retention") or "",
                 )
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
@@ -464,7 +477,6 @@ class Handler(BaseHTTPRequestHandler):
                     data.get("body") or "",
                     data.get("refs") or [],
                     data.get("sensitivity") or "",
-                    data.get("retention") or "",
                 )
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
@@ -498,15 +510,15 @@ class Handler(BaseHTTPRequestHandler):
                 data.get("detail") or "",
             )
             self._json(200, {"ok": True})
+        elif path == "/api/force-stop":
+            self._json(200, agent_bus.force_stop(
+                self.bus_dir,
+                data.get("by") or "user",
+                data.get("reason") or "force_stop",
+                data.get("detail") or "dashboard",
+            ))
         elif path == "/api/clear-stop":
             agent_bus.delete_path(ps["stop"])
-            self._json(200, {"ok": True})
-        elif path == "/api/agent-delete":
-            name = agent_bus._clean_text(data.get("agent"))
-            if not name:
-                self._json(400, {"error": "agent required"})
-                return
-            agent_bus.delete_agent_status(self.bus_dir, name)
             self._json(200, {"ok": True})
         elif path == "/api/clear":
             agent_bus.clear_bus(self.bus_dir, bool(data.get("all")))
@@ -547,7 +559,8 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=agent_bus.DEFAULT_PORT)
     parser.add_argument("--root", type=Path, default=agent_bus.DEFAULT_ROOT,
                         help="@ 파일 색인 루트 (기본 현재 디렉터리)")
-    parser.add_argument("--cards-dir", dest="cards_dir", type=Path, default=agent_bus.CARDS_DIR)
+    parser.add_argument("--cards-dir", dest="cards_dir", type=Path, default=agent_bus.CARDS_DIR,
+                        help="A2A 테스트 카드 JSON 디렉터리")
     args = parser.parse_args()
     return serve(args.bus_dir, args.port, args.root, args.cards_dir)
 

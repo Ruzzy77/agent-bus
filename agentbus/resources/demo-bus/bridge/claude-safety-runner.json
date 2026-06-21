@@ -1,0 +1,22 @@
+{
+  "event": "message.created",
+  "fromStart": true,
+  "handler": {
+    "args": [],
+    "provider": "claude",
+    "type": "agent"
+  },
+  "intervalSeconds": 5,
+  "matcher": {
+    "kind": [
+      "request",
+      "task",
+      "ticket",
+      "stop"
+    ],
+    "target": "a-demo-claude"
+  },
+  "name": "claude-safety-runner",
+  "schemaVersion": "bridge-profile.v1",
+  "timeoutSeconds": 0
+}

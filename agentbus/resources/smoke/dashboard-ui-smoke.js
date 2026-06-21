@@ -113,7 +113,7 @@ const restrictedMark = ctx.securityMark({sensitivity:'restricted'});
 assert(restrictedMark.includes('class="security-mark restricted"'), 'security marker should render lock-only marker style');
 assert(restrictedMark.includes('data-tip="보안 처리됨"') && restrictedMark.includes('aria-label="보안 처리됨"'), 'security marker should expose short text through tooltip/accessibility only');
 assert(!restrictedMark.includes('<span>restricted</span>') && !restrictedMark.includes('<span>보안') && !restrictedMark.includes('class="tag security'), 'security marker should not render a text pill');
-assert(ctx.compact.join(',') === '999,1.2K,10K' && ctx.age.join(',') === '방금,2시간 전,1일 전' && ctx.dur.join(',') === '59초,1.5시간,1일 16시간,2일', 'overview compact/time formatting mismatch');
+assert(ctx.compact.join(',') === '999,1.2K,10K' && ctx.age.join(',') === '방금,2시간 전,1일 전' && ctx.dur.join(',') === '1분 미만,1.5시간,1일 16시간,2일', 'overview compact/time formatting mismatch');
 assert(src.includes('function shouldShowTooltip') && src.includes('function normalizeTooltips'), 'tooltip normalization/suppression helpers missing');
 const copied = ctx.messageCopyText({subject:'제목', body:'본문\n둘째 줄', refs:['a.md,b.md']});
 assert(copied === '제목\n\n본문\n둘째 줄\n\nRefs:\na.md\nb.md', 'message copy text mismatch');
@@ -125,8 +125,7 @@ const requestStopHtml = ctx.renderStopBanner({by:'user', reason:'user_stop', det
 assert(requestStopHtml.includes('class="stop-label">정지 요청됨</span>'), 'active stop request label missing');
 assert(requestStopHtml.includes('class="stop-action stop-clear"') && requestStopHtml.includes('>해제</button>'), 'active stop request clear action missing');
 const openStopHtml = ctx.renderStopBanner(null);
-assert(openStopHtml.includes('class="stop-inner stop-form"') && openStopHtml.includes('class="stop-label">루프 열림</span>'), 'open loop stop request form missing');
-assert(openStopHtml.includes('id="stop-reason"') && openStopHtml.includes('>요청</button>') && openStopHtml.includes('data-tip="정지 사유를 입력하면 협업 루프에 정지 요청을 보냅니다."'), 'open loop stop request control missing');
+assert(openStopHtml === '', 'open loop status should not render a stop request panel');
 assert(ctx.stopDetailText({a:1}) === '{"a":1}', 'stop banner object detail mismatch');
 
 // Message and ID-pill rendering contracts.
@@ -179,7 +178,9 @@ this.bridgeFailureHtml = renderBridgeProfile({name:"a2a-reviewer", source:"packa
 this.bridgeInboundHtml = renderBridgeGateway({name:"A2A inbound", protocol:"a2a", endpoint:"http://127.0.0.1:8791/a2a/rpc", state:"ready", access:"local only"});
 this.bridgeAgentHtml = renderBridgeProfile({name:"claude-runner-inbox", source:"package", event:"message.created", matcherTargets:["reviewer"], handler:"claude", handlerType:"agent", provider:"claude", state:"ready"}, {});
 this.bridgeAnyTargetHtml = renderBridgeProfile({name:"openai-compatible-messages", source:"package", event:"message.created", matcherTargets:[], handler:"openai-compatible", handlerType:"openai-compatible", state:"ready"}, {});
-this.bridgeAllTargetHtml = renderBridgeProfile({name:"broadcast-profile", source:"local", event:"message.created", matcherTargets:["all"], handler:"monitor", handlerType:"monitor", state:"ready"}, {});
+this.bridgePrefixedRuntime = bridgeRuntimeForProfile(new Map([["teammate/a2a-reviewer", {failureCount:2}]]), "a2a-reviewer");
+this.bridgeFailureRank = bridgeRuntimeRank({failureCount:1}, {state:"ready"});
+this.bridgeReadyRank = bridgeRuntimeRank({}, {state:"ready"});
 `;
 const panelCtx = exportBefore(
   'async function clearDone',
@@ -191,20 +192,19 @@ assert(panelCtx.panelHtml.includes('data-panel-toggle="agents_more"') && panelCt
 assert(panelCtx.panelListMore === '<i>a</i><i>b</i><button type="button" class="todo-expand" data-panel-toggle="tasks_more">작업 1개 더 보기<span class="exp-caret down"></span></button>', 'panel list collapsed render contract missing');
 assert(panelCtx.panelListLess === '<i>a</i><i>b</i><i>c</i><button type="button" class="todo-expand" data-panel-toggle="tasks_less">접기<span class="exp-caret up"></span></button>', 'panel list expanded render contract missing');
 assert(panelCtx.panelEmptyHtml === '<div class="panel-empty">등록된 에이전트 없음</div>', 'side panel empty state should use neutral empty row');
-assert(panelCtx.agentHtml.includes('class="agent-actions inline-actions"') && panelCtx.agentHtml.includes('class="msg-act msg-del agent-del"') && panelCtx.agentHtml.indexOf('class="agent-actions inline-actions"') > panelCtx.agentHtml.indexOf('class="agent-note"'), 'agent delete button should render as overlay action');
-assert(!panelCtx.agentHtml.includes('todo-del" data-tip="제거"'), 'agent delete action should not reuse reserved-row delete button');
+assert(!panelCtx.agentHtml.includes('data-delete-agent'), 'agent cards should not expose a delete action without runner ownership');
 assert(panelCtx.ticketHtml.includes('<details class="refs-expander"><summary><span class="refs-label">참조 3개<span class="refs-caret"></span></span></summary>') && !panelCtx.ticketHtml.includes('<details class="refs-expander" open'), 'ticket refs should render collapsed expander');
 assert(panelCtx.ticketHtml.includes('class="todo-actions inline-actions"') && panelCtx.ticketHtml.includes('class="msg-act todo-run"') && panelCtx.ticketHtml.includes('class="msg-act msg-del todo-del"'), 'ticket actions should reuse inline action controls');
 assert((panelCtx.skillHtml.match(/skill-alpha/g) || []).length === 1 && panelCtx.skillHtml.includes('근거 확인 1') && panelCtx.skillHtml.includes('주의 1건'), 'skill card should not repeat its title in metadata');
-assert(panelCtx.skillHtml.includes('todo-mark health-mark input_required') && !panelCtx.skillHtml.includes('skill-state'), 'skill card should reuse task status marker');
-assert(panelCtx.bridgeProfileHtml.includes('a2a-reviewer') && panelCtx.bridgeProfileHtml.includes('bridge-time') && panelCtx.bridgeProfileHtml.includes('data-position-time="2026-06-18T12:00:00Z"') && panelCtx.bridgeProfileHtml.includes('A2A') && panelCtx.bridgeProfileHtml.includes('data-agent="reviewer"') && panelCtx.bridgeProfileHtml.includes('idpill-compact bridge-target') && panelCtx.bridgeProfileHtml.includes('message.created') && panelCtx.bridgeProfileHtml.includes('bridge-kind') && panelCtx.bridgeProfileHtml.includes('request, report, note') && !panelCtx.bridgeProfileHtml.includes('request</code><span class="route-sep">') && !panelCtx.bridgeProfileHtml.includes('target reviewer') && !panelCtx.bridgeProfileHtml.includes('bridge-source') && !panelCtx.bridgeProfileHtml.includes('tracked'), 'bridge profile card contract missing');
-assert(panelCtx.bridgeProfileHtml.includes('todo-mark health-mark completed') && panelCtx.bridgeFailureHtml.includes('todo-mark health-mark failed'), 'bridge cards should reuse task status marker');
+assert(panelCtx.skillHtml.includes('todo-mark status-mark input_required health-mark') && panelCtx.skillHtml.includes('<svg') && !panelCtx.skillHtml.includes('skill-state'), 'skill card should reuse shared lucide status marker');
+assert(panelCtx.bridgeProfileHtml.includes('a2a-reviewer') && panelCtx.bridgeProfileHtml.includes('bridge-time') && panelCtx.bridgeProfileHtml.includes('data-position-time="2026-06-18T12:00:00Z"') && panelCtx.bridgeProfileHtml.includes('A2A') && panelCtx.bridgeProfileHtml.includes('data-agent="reviewer"') && panelCtx.bridgeProfileHtml.includes('idpill-compact bridge-target') && panelCtx.bridgeProfileHtml.includes('새 메시지') && panelCtx.bridgeProfileHtml.includes('bridge-kind') && panelCtx.bridgeProfileHtml.includes('request, report, note') && !panelCtx.bridgeProfileHtml.includes('request</code><span class="route-sep">') && !panelCtx.bridgeProfileHtml.includes('target reviewer') && !panelCtx.bridgeProfileHtml.includes('bridge-source') && !panelCtx.bridgeProfileHtml.includes('tracked'), 'bridge profile card contract missing');
+assert(panelCtx.bridgeProfileHtml.includes('todo-mark status-mark completed health-mark') && panelCtx.bridgeFailureHtml.includes('todo-mark status-mark failed health-mark'), 'bridge cards should reuse shared lucide status marker');
 assert(panelCtx.bridgeMissingHtml.includes('bridge-target-missing') && panelCtx.bridgeMissingHtml.includes('aria-disabled="true"') && !panelCtx.bridgeMissingHtml.includes('data-agent="ghost"'), 'missing bridge target should render as disabled reference');
-assert(panelCtx.bridgeFailureHtml.includes('failure') && panelCtx.bridgeFailureHtml.includes('failures 1'), 'bridge failure status should be folded into profile card');
+assert(panelCtx.bridgeFailureHtml.includes('failure') && panelCtx.bridgeFailureHtml.includes('오류 1건'), 'bridge failure status should be folded into profile card');
+assert(panelCtx.bridgePrefixedRuntime.failureCount === 2 && panelCtx.bridgeFailureRank < panelCtx.bridgeReadyRank, 'prefixed bridge runtime state should attach to local profile and sort first');
 assert(panelCtx.bridgeInboundHtml.includes('A2A inbound') && panelCtx.bridgeInboundHtml.includes('/a2a/rpc') && !panelCtx.bridgeInboundHtml.includes('handler-inbound'), 'bridge gateway card contract missing');
-assert(panelCtx.bridgeAgentHtml.includes('claude-cli') && !panelCtx.bridgeAgentHtml.includes('>claude</span>'), 'agent bridge handler should show cli surface');
+assert(panelCtx.bridgeAgentHtml.includes('claude-cli') && !panelCtx.bridgeAgentHtml.includes('>claude</span>'), 'agent bridge handler should show cli runner label');
 assert(panelCtx.bridgeAnyTargetHtml.includes('OpenAI Compatible') && panelCtx.bridgeAnyTargetHtml.includes('>-</span>'), 'openai-compatible/no-target bridge display mismatch');
-assert(panelCtx.bridgeAllTargetHtml.includes('>all</span>') && !panelCtx.bridgeAllTargetHtml.includes('data-agent="all"'), 'broadcast target should not render as an agent link');
 for (const oldToken of ['threadchip', 'todo-id', 'beat.stale']) {
   assert(!src.includes(oldToken), `old dashboard token still present: ${oldToken}`);
 }
@@ -215,9 +215,16 @@ assert(src.includes('window.AgentBusDashboardPrimitives') && primitiveSrc.includ
 assert(htmlHasId('loopstate') && !htmlHasId('stopbtn'), 'loop status toggle did not replace settings stop button');
 assert(dashboardHtml.includes('세션 메시지') && dashboardHtml.includes('class="set-actions"') && dashboardHtml.includes('보관') && dashboardHtml.includes('비우기'), 'settings session message action row missing');
 assert(dashboardHtml.includes('class="set-label"') && dashboardHtml.includes('aria-label="시스템 테마"') && dashboardHtml.includes('aria-label="메시지 보관"'), 'settings icon-label action controls missing');
-assertOrder('id="seg-kind"', 'id="dd-to"', 'compose kind selector should precede recipient selector');
+assert(htmlHasId('compose-kind') && htmlHasId('kind-token') && htmlHasId('compose-meta-chips'), 'inline compose controls missing');
+assert(dashboardHtml.includes('data-v="task"') && dashboardHtml.includes('data-v="ticket"') && dashboardHtml.includes('data-v="stop"'), 'lead management compose kinds missing');
+assert(!htmlHasId('closecompose') && dashboardHtml.includes('class="iconbtn send compose-send"'), 'compose should keep send inside the input field and remove the close button');
+assert(!htmlHasId('seg-kind') && !htmlHasId('dd-to') && !htmlHasId('dd-task') && !htmlHasId('compose-policy'), 'old compose dropdown controls should stay removed');
+assert(src.includes('function makeComposePalette') && src.includes('mode:"security"') && src.includes('mode:"agent"') && src.includes('mode:"task"'), 'compose slash palette contract missing');
+assert(!htmlHasId('dd-ticket-sensitivity') && !htmlHasId('dd-task-sensitivity'), 'side panel task/ticket sensitivity controls should stay removed');
+assert(src.includes('sensitivity: composeSensitivity') && !src.includes('ticketSensitivity') && !src.includes('taskSensitivity'), 'dashboard write payloads should route sensitivity through compose only');
 assert(!src.includes('label:"all (전체)"') && !dashboardHtml.includes('all (전체)'), 'compose all label regression');
 assert(htmlHasId('fp-kinds') && dashboardHtml.includes('필터 해제'), 'filter kind controls missing');
+assert(src.includes('function filterAgentKey') && src.includes('filterAgents.has(filterAgentKey(m.from))'), 'participant filter should canonicalize agent names and ids');
 assert(htmlHasId('skills') && dashboardHtml.includes('스킬'), 'skill side panel missing');
 assert(htmlHasId('side-tab-work') && htmlHasId('side-tab-agent') && htmlHasId('side-tab-bridge') && htmlHasId('side-work') && htmlHasId('side-agent') && htmlHasId('side-bridge'), 'side panel tabs missing');
 assert(htmlHasId('bridge-profiles') && htmlHasId('bridge-gateways') && !htmlHasId('bridges'), 'bridge side panel should use profile and gateway lists');
@@ -226,7 +233,7 @@ assertOrder('id="side-tab-work"', 'id="side-tab-agent"', 'side tab order should 
 assertOrder('id="side-tab-agent"', 'id="side-tab-bridge"', 'bridge tab should follow agent tab');
 assertOrder('id="side-work"', 'id="side-agent"', 'side panel content order should be work then agent');
 assert(!dashboardHtml.includes(' title=') && !src.includes(' title=') && !src.includes('.title ='), 'native title tooltip source leaked');
-assert(!dashboardHtml.includes('newtask-form" hidden') && !dashboardHtml.includes('newticket-form" hidden'), 'animated panel forms should not use hidden attribute');
+assert(!htmlHasId('newtask') && !htmlHasId('newticket') && !dashboardHtml.includes('newtask-form') && !dashboardHtml.includes('newticket-form'), 'side panel creation controls should stay removed');
 assert(!dashboardHtml.includes(' onclick=') && !dashboardHtml.includes(' onsubmit=') && !src.includes('onclick=') && !src.includes('onsubmit='), 'inline dashboard event handler leaked');
 
 // CSS-level contracts. These check semantic properties instead of exact rule text.
@@ -288,7 +295,7 @@ assert(!('align-self' in decls(cssBlock('.side-tabs'))), 'side tab container sho
 assertDecl('.side-tabs button', 'flex', v => v === '1 1 0', 'side tab buttons should keep equal widths across selected labels');
 assertDecl('.side-tabs button', 'height', v => v === '26px', 'side tab buttons should keep compact fixed height across active labels');
 assertDecl('.side-tab-thumb', 'position', v => v === 'absolute', 'side tab thumb should slide under active tab');
-assertDecl('.side-tab-thumb', 'background', v => v === 'var(--segment-thumb)', 'side tab thumb should use visible segmented thumb surface');
+assertDecl('.side-tab-thumb', 'background', v => v === 'var(--segment-thumb)', 'side tab thumb should use visible segmented thumb background');
 assertDecl('.side-tab-thumb', 'transition', v => v === 'none', 'side tab thumb should not animate during resize/layout updates');
 assertDecl('.side-tabs.side-tabs-animate .side-tab-thumb', 'transition', v => v === 'var(--transition-thumb)', 'side tab click animation contract missing');
 assertDecl('.side-tab-panel', 'display', v => v === 'flex', 'side tab panels should preserve section stack');
@@ -304,8 +311,10 @@ assert(floatingSidePadding.startsWith('0 '), 'floating side panel should keep fi
 assertSelectorContains('#skills, #bridge-profiles, #bridge-gateways', ['display:flex', 'gap:8px']);
 assertDecl('.bridge-head', 'align-items', v => v === 'flex-start', 'bridge card header should top-align status pill');
 assertDecl('.health-mark', 'margin-left', v => v === 'auto', 'health marker should keep right alignment');
-assertDecl('.todo-mark.input_required::after', 'content', v => v === '"!"', 'warning task marker should use exclamation mark');
-assertDecl('.tdot.working', 'border', v => v === '2px solid var(--accent)', 'working state menu marker should be an open circle');
+assertDecl('.todo-mark svg', 'stroke-width', v => v === '2.15', 'status marker should use shared lucide stroke weight');
+assertDecl('.todo-mark.completed', 'color', v => v === 'var(--done)', 'completed task marker should use shared status color');
+assertDecl('.todo-mark.input_required', 'color', v => v === 'var(--waiting)', 'warning task marker should use shared status color');
+assertDecl('.tdot svg', 'width', v => v === '14px', 'state menu marker should reuse compact lucide status icon');
 assertSelectorContains('.todo:hover .todo-actions, .todo-actions:has(.tdd.open), .todo:has(.todo-actions :focus-visible) .todo-actions', ['pointer-events:auto', 'transform:translateY(0)']);
 assert(!dashboardCss.includes('.todo-run:hover') && !dashboardCss.includes('.todo-del:hover'), 'todo actions should use shared icon hover styles');
 assertDecl('.reply-go.iconbtn.send', 'width', v => v === '34px', 'reply send icon button should stay compact');
@@ -316,9 +325,8 @@ assertDecl('.refs-caret', 'width', v => v === '5px', 'reference expander caret s
 assertDecl('.refs-caret', 'transform', v => v.includes('translateY(-2px)'), 'reference expander caret should align with the label baseline');
 assertDecl('.refs-expander[open] .refs-caret', 'opacity', v => v === '1', 'reference expander caret should stay visible when open');
 assertDecl('.bridge-time', 'color', v => v === 'var(--mid)', 'bridge processed time should use secondary text color');
-assertSelectorContains('.agent-actions', ['position:absolute']);
 assertSelectorContains('.inline-actions', ['pointer-events:none', 'backdrop-filter:saturate(180%) blur(12px)']);
-assertSelectorContains('.agent:hover .agent-actions, .agent:has(.agent-del:focus-visible) .agent-actions', ['pointer-events:auto', 'transform:translateY(0)']);
+assert(!dashboardCss.includes('.agent-actions'), 'agent card should not keep unused delete overlay styles');
 assert(!cssBlocks('.agent-head').some(block => block.includes('padding-right')) && !cssBlocks('.agent-meta').some(block => block.includes('padding-right')), 'agent card should not reserve layout space for delete overlay');
 assertDecl('.tag', 'background', v => v === 'transparent', 'semantic tags should stay flatter than ID pills');
 assertDecl('.tag', 'border-radius', v => v === 'var(--radius-xs)', 'semantic tags should not reuse pill radius');
@@ -326,29 +334,56 @@ assertDecl('.kind.report', 'color', v => v === 'var(--done)', 'report tag should
 assertDecl('.security-mark', 'color', v => v === 'var(--security)', 'security marker should use dedicated security color');
 assertDecl('.security-mark.internal', 'color', v => v === 'var(--security-muted)', 'internal security marker should use gray security color');
 assert(dashboardCss.includes('--apple-yellow:#fdbc00') && dashboardCss.includes('--apple-gray:#818186'), 'Apple-style semantic colors should be available as tokens');
-assert(!dashboardCss.includes('.security.restricted'), 'security text tag style should stay absent');
+assertDecl('.compose-chip.security.internal', 'color', v => v === 'var(--security)', 'internal compose security chip should keep security color');
+assertDecl('.compose-chip.security.restricted', 'color', v => v === 'var(--error)', 'restricted compose security chip should use error color');
+assertDecl('.compose-chip button svg', 'color', v => v === 'currentColor', 'compose chip close icon should inherit neutral button color');
 assertDecl('.bridge-dir', 'color', v => v === 'var(--ink)', 'bridge handler labels should use one neutral color');
 assert(cssRuleContaining('.idpill.on[data-agent]:hover').includes('color:#fff'), 'selected agent pill hover should keep readable text');
 assertSelectorContains('.bridge-target-missing', ['text-decoration:line-through', 'cursor:default']);
 assert(src.includes('async function jumpToAgent') && src.includes('jumpToAgent(agent.dataset.agent)'), 'bridge agent target should jump to agent card');
 assert(!src.includes('toggleInSet(filterAgents, agent.dataset.agent, agent);'), 'bridge agent target should not toggle message participant filter');
 assertSelectorContains('.stop-inner', ['display:flex', 'overflow:hidden', 'width:100%']);
-assertDecl('.stop-form', 'display', v => v === 'grid', 'open loop form should use grid layout');
-assertDecl(
-  '.stop-form',
-  'grid-template-columns',
-  v => v.includes('minmax') && v.includes('auto'),
-  'open loop form should keep input and button on control row'
-);
-assertDecl('.stop-form .stop-copy', 'grid-column', v => v === '1 / -1', 'open loop explanatory text should occupy first row');
+assert(!dashboardCss.includes('.stop-form') && !dashboardCss.includes('.stop-reason') && !src.includes('data-stop-form'), 'stop request form should not remain in dashboard UI');
+assert(!src.includes('data-tip="정지 사유를 입력하면 협업 루프에 정지 요청을 보냅니다."'), 'visible stop helper text should not repeat itself as a tooltip');
 const project = decls(cssBlock('.project'));
 assert((project['font-family'] || '').includes('ui-monospace') && project.flex === 'none' && (project['max-width'] || '').includes('24vw'), 'project badge sizing contract missing');
 assertDecl('.project.project-hidden', 'display', v => v === 'none', 'project badge should hide rather than shrink when topbar is tight');
 assert(!dashboardCss.includes('@media (max-width: 760px) { .project { display:none; } }'), 'project badge should be hidden by fit logic, not a fixed media query');
-assertDecl('.seg-thumb', 'background', v => v === 'var(--segment-thumb)', 'compose kind thumb should use visible segmented thumb surface');
-assertDecl('.seg-thumb', 'transition', v => v === 'var(--transition-thumb)', 'compose kind thumb should use the shared thumb transition');
-assertDecl('.filter-kind button.on', 'background', v => v === 'var(--segment-thumb)', 'filter kind selected thumb should use visible segmented thumb surface');
-assert(dashboardCss.includes('--segment-thumb:#3a3a3c'), 'dark theme should brighten segmented thumb surface');
+assertDecl('.compose-kind.open .kind-token', 'opacity', v => v === '0', 'compose kind token should yield to expanded inline tags');
+assertDecl('.kind-pop button.on', 'background', v => v === 'var(--hover)', 'compose kind menu should use the tag selected background');
+assertDecl('.kind-pop', 'white-space', v => v === 'nowrap', 'compose kind popover should keep kind labels on one line');
+assertDecl('.kind-pop button', 'white-space', v => v === 'nowrap', 'compose kind buttons should not wrap Korean labels');
+assertDecl('.filter-kind', 'display', v => v === 'flex', 'filter kind selector should render as a segmented control');
+assertDecl('.filter-kind', 'background', v => v === 'var(--hover)', 'filter kind selector should have a segmented track');
+assertDecl('.filter-kind button', 'border', v => v === '0', 'filter kind buttons should not fall back to native button styling');
+assertDecl('.filter-kind button', 'white-space', v => v === 'nowrap', 'filter kind labels should stay on one line');
+assertDecl('.filter-kind button', 'height', v => v === '26px', 'filter kind selected border should keep vertical breathing room');
+assertDecl('.filter-kind', 'overflow', v => v === 'visible', 'filter kind selected shadow should not clip against the track');
+assertDecl('.filter-kind button', 'margin', v => v === '0', 'filter kind buttons should stay centered in the track');
+assertDecl('.filter-kind button.on', 'background', v => v === 'var(--segment-thumb)', 'selected filter kind should read as the active segment');
+assertDecl('.filter-kind button.on', 'color', v => v === 'var(--accent)', 'selected filter kind should use the active filter color');
+assertDecl('.fp-opt', 'display', v => v === 'grid', 'filter participant/task rows should reuse palette item layout');
+assertDecl('.fp-opt', 'grid-template-columns', v => v === 'auto minmax(0, auto) minmax(0, 1fr)', 'filter rows should keep check, main, and meta text columns');
+assertDecl('.fp-main', 'font-weight', v => v === '500', 'filter row main text should match slash palette hierarchy');
+assertDecl('.fp-meta', 'color', v => v === 'var(--dim)', 'filter row meta text should match slash palette hierarchy');
+assert(src.includes('class="fp-main"') && src.includes('class="fp-meta"'), 'filter rows should render main/meta text like slash palette rows');
+assert(!src.includes('fp-task-main') && !src.includes('fp-task-title'), 'old two-line task filter row should stay removed');
+assertDecl('.composer-field', 'display', v => v === 'grid', 'compose field should own the inline send layout');
+assertDecl('.compose-send', 'grid-column', v => v === '2', 'compose send should sit inside the field on the right');
+assertDecl('.compose-send', 'align-self', v => v === 'end', 'compose send should align to the bottom of the field');
+assertDecl('.compose-input-row', 'align-items', v => v === 'center', 'single-line compose row should center the token and text');
+assertDecl('.composer-field.compose-multiline .compose-input-row', 'align-items', v => v === 'flex-start', 'multiline compose row should grow downward from the same top edge');
+assertDecl('.compose-input-row', 'min-height', v => v === '28px', 'single-line compose row should align with the compact send button');
+assertDecl('.compose-token-row', 'min-height', v => v === '28px', 'compose kind token row should match the compact input row');
+assertDecl('#compose textarea', 'min-height', v => v === '28px', 'compose textarea should keep the single-line row centered');
+assertDecl('.compose-send.iconbtn.send', 'width', v => v === '28px', 'compose send button should stay compact inside the field');
+assertDecl('.compose-send.iconbtn.send svg', 'width', v => v === '17px', 'compose send icon should scale with the compact button');
+assertDecl('.composer-field:has(.compose-meta-chips:empty)', 'row-gap', v => v === '0', 'single-line compose field should not reserve metadata gap');
+assertDecl('.composer-field:has(.compose-meta-chips:empty) .compose-send', 'grid-row', v => v === '1', 'single-line compose send should align to the input row');
+assertDecl('.composer-field:has(.compose-meta-chips:empty):not(.compose-multiline) .compose-send', 'align-self', v => v === 'center', 'single-line compose send should center in the input row');
+assert(src.includes('classList.toggle("compose-multiline"'), 'compose field should track multiline state for alignment');
+assert(!dashboardCss.includes('#compose #closecompose'), 'compose close button styles should stay removed');
+assert(dashboardCss.includes('--segment-thumb:#3a3a3c'), 'dark theme should brighten segmented thumb background');
 assertDecl('.overview .ov-dot', 'background', v => v === 'var(--circle)', 'overview dots should have a CSS default color');
 assertDecl('.overview .ov-dot.running', 'background', v => v === 'var(--running)', 'overview running dot color missing');
 assertDecl('.overview .ov-dot.waiting', 'background', v => v === 'var(--waiting)', 'overview waiting dot color missing');
@@ -368,10 +403,8 @@ assertDecl(
 for (const needle of [
   'function fitProjectBadge()',
   'window.addEventListener("resize", fitProjectBadge)',
-  'function toggleLoopPanel()',
-  'function requestStopFromPanel',
   'filterKinds',
-  'fp-task-opt',
+  'class="fp-main"',
   'function normalizeTooltips',
   'new MutationObserver',
   'window.matchMedia ? window.matchMedia("(max-width: 720px)")',
@@ -396,10 +429,10 @@ for (const needle of [
   'byId("side-tab-bridge").addEventListener("click", () => setSideTab("bridge", true, true))',
   'byId("bridge-profiles").addEventListener("click", e => {',
   'setSideTab(sideTab, false)',
-  'bar.classList.add("open")',
-  'function setInlineFormOpen',
-  'setInlineFormOpen(newtaskForm, newtaskBtn, newtaskTitle, open)',
-  'setInlineFormOpen(newticketForm, newticketBtn, newticketTitle, open)',
+  'byId("force-stopbtn")?.addEventListener("click", async () => {',
+  'const LEAD_REQUEST_KINDS = new Set(["task", "ticket", "stop"])',
+  'LEAD_AGENT_ID = AGENT_NAMES.find(id => isLeadAgent(agents[id] || {})) || ""',
+  'if (LEAD_REQUEST_KINDS.has(kind)) composeKind = "note"',
 ]) {
   assert(src.includes(needle), `dashboard interaction sentinel missing: ${needle}`);
 }

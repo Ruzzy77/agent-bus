@@ -46,7 +46,6 @@ def _text_part(text: object) -> dict[str, Any]:
 
 def _data_part(data: Any, source: str = "") -> dict[str, Any]:
     level = core.effective_sensitivity(data) if isinstance(data, dict) else "normal"
-    retention = core.effective_retention(data) if isinstance(data, dict) else "normal"
     projected = core.redact_payload(data, level) if level in core.EXTERNAL_RAW_BLOCK_LEVELS else data
     part: dict[str, Any] = {
         "data": projected,
@@ -58,7 +57,7 @@ def _data_part(data: Any, source: str = "") -> dict[str, Any]:
     if isinstance(data, dict) and data.get("schemaVersion"):
         metadata["schemaVersion"] = data["schemaVersion"]
     if isinstance(data, dict):
-        metadata.update(core.security_fields(level, retention))
+        metadata.update(core.security_fields(level))
     if isinstance(projected, dict) and projected.get("redacted"):
         metadata["redacted"] = True
     if metadata:
@@ -76,7 +75,7 @@ def _message_metadata(row: dict[str, Any]) -> dict[str, Any]:
         "subject": row.get("subject", ""),
         "evidenceReferences": row.get("refs") or [],
     }
-    metadata.update(core.security_fields(core.effective_sensitivity(row), core.effective_retention(row)))
+    metadata.update(core.security_fields(core.effective_sensitivity(row)))
     if row.get("redacted"):
         metadata["redacted"] = True
         metadata["redactedFields"] = row.get("redactedFields") or []
@@ -467,7 +466,6 @@ def _response_message_record(message: dict[str, Any], sender: str, recipient: st
         task_id,
         "",
         metadata.get("sensitivity"),
-        metadata.get("retention"),
     )
 
 
@@ -502,7 +500,6 @@ def record_rpc_result(
             fallback_task,
             "",
             request_metadata.get("sensitivity"),
-            request_metadata.get("retention"),
         )
         core.append_message(bus_dir, msg)
         out["messageId"] = msg["id"]
@@ -553,7 +550,6 @@ def record_rpc_result(
             fallback_task,
             "",
             request_metadata.get("sensitivity"),
-            request_metadata.get("retention"),
         )
         core.append_message(bus_dir, msg)
         out["messageId"] = msg["id"]
@@ -582,7 +578,6 @@ def inbound_message_to_bus(bus_dir: Path, request: dict[str, Any], recipient: st
         task_id,
         "",
         metadata.get("sensitivity"),
-        metadata.get("retention"),
     )
     core.append_message(bus_dir, msg)
     return msg

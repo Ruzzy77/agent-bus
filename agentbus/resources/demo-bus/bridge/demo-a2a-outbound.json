@@ -1,0 +1,22 @@
+{
+  "event": "message.created",
+  "failLog": "teammate-runs/demo-a2a-outbound.failures.jsonl",
+  "fromStart": true,
+  "handler": {
+    "allowInsecure": true,
+    "protocol": "a2a",
+    "type": "http",
+    "url": "http://127.0.0.1:9/a2a/rpc"
+  },
+  "intervalSeconds": 1,
+  "matcher": {
+    "kind": [
+      "request"
+    ],
+    "target": "a-demo-a2a"
+  },
+  "name": "demo-a2a-outbound",
+  "positionFile": "teammate-runs/demo-a2a-outbound.position",
+  "schemaVersion": "bridge-profile.v1",
+  "timeoutSeconds": 1
+}

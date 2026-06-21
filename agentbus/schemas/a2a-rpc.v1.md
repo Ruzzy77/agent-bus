@@ -24,7 +24,7 @@ agentbus packet receive --protocol a2a --file request.json
 | structured JSON | additional `params.message.parts[].data` |
 | task id | `params.message.taskId`, `referenceTaskIds` |
 | sender, recipient, subject, refs | `params.message.metadata` |
-| sensitivity, retention | `params.message.metadata`, `parts[].metadata` for packet data |
+| sensitivity | `params.message.metadata`, `parts[].metadata` for packet data |
 | shared endpoint route | `params.tenant`, `supportedInterfaces[].tenant` |
 
 Structured JSON such as `assessment-packet.v1` stays in the same `SendMessage` request as a `data` part.

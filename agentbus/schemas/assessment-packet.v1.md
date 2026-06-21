@@ -12,7 +12,6 @@ The packet uses neutral external terms and avoids product names or project-coine
   "packetId": "pkt-...",
   "createdAt": "2026-06-15T00:00:00+00:00",
   "sensitivity": "restricted",
-  "retention": "no_archive",
   "asset": {"assetId": "urn:example:asset:line-7-press-2"},
   "aasEnvironment": {
     "assetAdministrationShells": [],
@@ -33,7 +32,7 @@ The packet uses neutral external terms and avoids product names or project-coine
 
 `OperationalData` and `AssessmentRecords` stay in the same packet when the receiver needs an auditable data-and-judgment bundle.
 
-`sensitivity` and `retention` are optional handling signals. `internal` sources are projected with redaction for external packet use, and `restricted` packets are blocked by `packet send`.
+`sensitivity` is the optional handling signal. `internal` sources are projected with redaction for external packet use, and `restricted` packets are blocked by `packet send`.
 
 ## Assessment summary
 

@@ -4,7 +4,14 @@
   "event": "message.created",
   "matcher": {
     "target": "codex",
-    "kind": ["request", "report", "note"]
+    "kind": [
+      "request",
+      "report",
+      "note",
+      "task",
+      "ticket",
+      "stop"
+    ]
   },
   "handler": {
     "type": "monitor"

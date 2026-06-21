@@ -10,8 +10,9 @@
     "protocol": "a2a",
     "url": "$A2A_ENDPOINT"
   },
-  "envs": ["A2A_ENDPOINT"],
+  "envs": [
+    "A2A_ENDPOINT"
+  ],
   "intervalSeconds": 1,
-  "maxSeconds": 0,
   "timeoutSeconds": 60
 }

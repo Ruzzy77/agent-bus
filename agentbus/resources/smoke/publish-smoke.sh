@@ -24,24 +24,31 @@ export AGENTBUS_CAPSULE_SERVER=1
 
 "$PYTHON" -m py_compile agentbus/*.py
 if command -v node >/dev/null 2>&1; then
+  node --check agentbus/static/dashboard-primitives.js >/dev/null
   node --check agentbus/static/dashboard.js >/dev/null
   node --check agentbus/resources/smoke/dashboard-ui-smoke.js >/dev/null
+  if grep -R '<svg' agentbus/static/dashboard.html agentbus/static/dashboard.js >/dev/null; then
+    echo "dashboard icons must come from dashboard-primitives.js" >&2
+    exit 1
+  fi
   node agentbus/resources/smoke/dashboard-ui-smoke.js
 fi
 
-ab guide loop | grep -q '^# agent-bus loop$'
-ab guide loop | grep -q 'Loop closure report'
+ab guide loop > "$TMP/guide-loop.md"
+grep -q '^# agent-bus loop$' "$TMP/guide-loop.md"
+grep -q 'Loop closure report' "$TMP/guide-loop.md"
 LOOP_SKILL=$(ab guide loop --path)
 [ -f "$LOOP_SKILL" ]
 grep -q 'agent-bus-workflow' "$LOOP_SKILL"
-ab guide workflow | grep -q '^# agent-bus workflow$'
-ab guide workflow | grep -q 'Termination report'
+ab guide workflow > "$TMP/guide-workflow.md"
+grep -q '^# agent-bus workflow$' "$TMP/guide-workflow.md"
+grep -q 'Termination report' "$TMP/guide-workflow.md"
 WORKFLOW_SKILL=$(ab guide workflow --path)
 [ -f "$WORKFLOW_SKILL" ]
 
 SKILL_BUS="$TMP/skill-bus"
 ab --bus-dir "$SKILL_BUS" bus init >/dev/null
-ab --bus-dir "$SKILL_BUS" skill new smoke-skill --description "Checks bus-local skill discovery." >/dev/null
+ab --bus-dir "$SKILL_BUS" skill new smoke-skill --description "Checks local skill discovery." >/dev/null
 ab --bus-dir "$SKILL_BUS" skill state smoke-skill --state active >/dev/null
 ab --bus-dir "$SKILL_BUS" skill list | grep -q '^smoke-skill'
 ab --bus-dir "$SKILL_BUS" skill show smoke-skill | grep -q '^# smoke-skill'
@@ -61,7 +68,11 @@ ab resource list | grep -q '^bridge/openai-compatible-messages.json$'
 ab resource list | grep -q '^bridge/openai-compatible-tasks.json$'
 ab resource list | grep -q '^bridge/openai-compatible-tickets.json$'
 ab resource list | grep -q '^demo-bus/dashboard-demo.png$'
+ab resource list | grep -q '^demo-bus/key_context.json$'
+ab resource list | grep -q '^demo-bus/bridge/demo-monitor.json$'
+ab resource list | grep -q '^demo-bus/bridge/demo-a2a-outbound.json$'
 ab resource list | grep -q '^demo-bus/skills/loop-closure-report/SKILL.md$'
+ab resource list | grep -q '^demo-bus/skills/demo-showcase-review/SKILL.md$'
 if ab resource path ../pyproject.toml >/dev/null 2>&1; then
   echo "resource path escape passed" >&2
   exit 1
@@ -72,9 +83,19 @@ cp -R "$DEMO_SRC" "$DEMO_BUS"
 ab --bus-dir "$DEMO_BUS" bus migrate --from "$DEMO_BUS" >/dev/null
 ab --bus-dir "$DEMO_BUS" task list > "$TMP/demo-tasks.txt"
 ab --bus-dir "$DEMO_BUS" ticket list --json > "$TMP/demo-tickets.json"
+ab --bus-dir "$DEMO_BUS" context show > "$TMP/demo-context.txt"
+ab --bus-dir "$DEMO_BUS" bridge status --json > "$TMP/demo-bridge-status.json"
 ab --bus-dir "$DEMO_BUS" auth demo --json > "$TMP/demo-auth.json"
 ab --bus-dir "$DEMO_BUS" skill list | grep -q '^loop-closure-report'
-grep -q "t-demo-review" "$TMP/demo-tasks.txt"
+ab --bus-dir "$DEMO_BUS" skill list | grep -q '^demo-showcase-review'
+grep -q "t-demo-lead" "$TMP/demo-tasks.txt"
+grep -q "demo bus" "$TMP/demo-context.txt"
+"$PYTHON" - "$TMP/demo-bridge-status.json" <<'PY'
+import json, sys
+rows = json.load(open(sys.argv[1]))["bridges"]
+assert any(row.get("name") == "teammate/demo-monitor" and row.get("position") for row in rows)
+assert any(row.get("name") == "teammate/demo-a2a-outbound" and row.get("failureCount") == 1 for row in rows)
+PY
 "$PYTHON" - "$TMP/demo-tickets.json" <<'PY'
 import json, sys
 tickets = json.load(open(sys.argv[1]))
@@ -107,14 +128,17 @@ export AGENTBUS_BUS_DIR="$TMP/bus"
 ab bus init >/dev/null
 [ -f "$AGENTBUS_BUS_DIR/bridge/profile.template.json" ]
 ab auth init >/dev/null
-ab auth grant --agent reviewer --ttl-seconds 3600 >/dev/null
+REVIEWER_ID=$(ab agent create --name reviewer)
+case "$REVIEWER_ID" in a-*) ;; *) echo "bad agent id: $REVIEWER_ID" >&2; exit 1;; esac
+ab auth grant --agent-name reviewer --ttl-seconds 3600 >/dev/null
 ab auth list > "$TMP/auth-list.txt"
 ab auth list --json > "$TMP/auth-list.json"
 grep -q 'expires=' "$TMP/auth-list.txt"
 "$PYTHON" - "$TMP/auth-list.json" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1]))
-row = next(row for row in data["agents"] if row.get("agent") == "reviewer")
+row = next(row for row in data["agents"] if row.get("displayName") == "reviewer")
+assert row["agent"].startswith("a-")
 assert row["expiresAt"]
 assert row["expired"] is False
 PY
@@ -124,6 +148,9 @@ ab skill evidence smoke-skill --type grounding --ref smoke:dashboard --note "das
 TASK_ID=$(ab task new --title "Smoke remote check" --by operator --assign reviewer)
 MSG_ID=$(ab message send --from operator --to reviewer --kind request --subject "Smoke" --body "Review smoke data" --task "$TASK_ID")
 ab message send --from operator --to reviewer --kind note --subject "Grouped command body" --body "task command" >/dev/null
+TICKET_ID=$(ab ticket new --title "Smoke ticket accept" --by operator --body "ticket accept should create task and request")
+ab ticket accept --id "$TICKET_ID" --by operator --to reviewer --note "smoke accept" | grep -q 'accepted task'
+ab agent inbox --name reviewer --limit 10 | grep -q 'Smoke ticket accept'
 
 ab packet data --protocol aas \
   --data agentbus/resources/aas/operational-data.sample.json \
@@ -171,18 +198,51 @@ bd = Path(sys.argv[2])
 messages = bus.read_jsonl(bus.paths(bd)["messages"])
 assert response["jsonrpc"] == "2.0"
 assert "result" in response
-assert any(row.get("subject") == "Smoke" and row.get("to") == "reviewer" for row in messages)
+assert any(row.get("subject") == "Smoke" and str(row.get("to", "")).startswith("a-") for row in messages)
 PY
 export AGENTBUS_BUS_DIR="$OLD_BUS"
 
-SENSITIVE_ID=$(ab message send --from operator --to reviewer --kind request --subject "NDA" --body "sensitive smoke" --sensitivity restricted --retention no_archive)
+SENSITIVE_ID=$(ab message send --from operator --to reviewer --kind request --subject "NDA" --body "sensitive smoke" --sensitivity restricted)
 ab packet transport --protocol a2a --artifact message --message-id "$SENSITIVE_ID" --request-id rpc-sensitive --out "$TMP/sensitive-request.json"
 if ab packet send --protocol a2a --file "$TMP/sensitive-request.json" --endpoint http://127.0.0.1:9/rpc >"$TMP/sensitive.out" 2>"$TMP/sensitive.err"; then
   echo "sensitive request was not blocked" >&2
   exit 1
 fi
 grep -q "restricted request blocked" "$TMP/sensitive.err"
-ab bus rotate >/dev/null
+ROTATE_OUT=$(ab bus rotate)
+echo "$ROTATE_OUT" | grep -q '^rotated: '
+ARCHIVE_PATH=$(printf '%s\n' "$ROTATE_OUT" | sed 's/^rotated: //')
+[ -f "$ARCHIVE_PATH" ]
+grep -q 'agentbus.capsule-archive.v1' "$ARCHIVE_PATH"
+ab bus archive list --json > "$TMP/archives.json"
+ARCHIVE_ID=$("$PYTHON" - "$TMP/archives.json" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+archives = data["archives"]
+assert archives
+print(archives[-1]["id"])
+PY
+)
+ab bus archive show "$ARCHIVE_ID" --json > "$TMP/archive-show.json"
+"$PYTHON" - "$TMP/archive-show.json" "$MSG_ID" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+msg_id = sys.argv[2]
+text = json.dumps(data, ensure_ascii=False)
+assert data["archive"]["id"]
+assert any(row.get("id") == msg_id for row in data["records"])
+assert "Review smoke data" not in text
+PY
+ARCHIVE_FILE=$(basename "$ARCHIVE_PATH")
+ab bus archive show "$ARCHIVE_FILE" --json > "$TMP/archive-show-file.json"
+"$PYTHON" - "$TMP/archive-show-file.json" "$ARCHIVE_ID" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+assert data["archive"]["id"] == sys.argv[2]
+PY
+ab bus archive restore "$ARCHIVE_ID" | grep -q '^restored: '
+ab agent inbox --name reviewer --limit 50 | grep -q "$MSG_ID"
+ab agent inbox --name reviewer --limit 20 | grep -q "$SENSITIVE_ID"
 ab bus security-check --json > "$TMP/security.json"
 "$PYTHON" -m json.tool "$TMP/security.json" >/dev/null
 "$PYTHON" - "$TMP/security.json" <<'PY'
@@ -191,67 +251,67 @@ checks = {row["name"]: row for row in json.load(open(sys.argv[1]))["checks"]}
 assert checks["bus_file_permissions"]["status"] == "ok"
 PY
 
-ab bridge check --file agentbus/resources/bridge/claude-inbox.json >/dev/null
-ab bridge check --file agentbus/resources/bridge/codex-inbox.json >/dev/null
-ab bridge check --file agentbus/resources/bridge/codex-runner-inbox.json >/dev/null
-ab bridge check --file agentbus/resources/bridge/claude-runner-inbox.json >/dev/null
-ab bridge check --file agentbus/resources/bridge/gemini-runner-inbox.json >/dev/null
-env A2A_ENDPOINT=http://127.0.0.1:9/rpc "$PYTHON" -m agentbus bridge check --file agentbus/resources/bridge/a2a-reviewer.json >/dev/null
-env OPENAI_COMPAT_ENDPOINT=http://127.0.0.1:9/v1/chat/completions \
+ab bridge check --profile agentbus/resources/bridge/claude-inbox.json >/dev/null
+ab bridge check --profile agentbus/resources/bridge/codex-inbox.json >/dev/null
+ab bridge check --profile agentbus/resources/bridge/codex-runner-inbox.json >/dev/null
+ab bridge check --profile agentbus/resources/bridge/claude-runner-inbox.json >/dev/null
+ab bridge check --profile agentbus/resources/bridge/gemini-runner-inbox.json >/dev/null
+env A2A_ENDPOINT=http://127.0.0.1:9/rpc "$PYTHON" -m agentbus bridge check --profile agentbus/resources/bridge/a2a-reviewer.json >/dev/null
+env OPENAI_COMPAT_ENDPOINT=https://127.0.0.1:9/v1/chat/completions \
   OPENAI_COMPAT_MODEL=smoke-model \
   OPENAI_COMPAT_API_KEY=smoke-key \
   OPENAI_COMPAT_RESPONSE_TO=operator \
-  "$PYTHON" -m agentbus bridge check --file agentbus/resources/bridge/openai-compatible-messages.json >/dev/null
-env OPENAI_COMPAT_ENDPOINT=http://127.0.0.1:9/v1/chat/completions \
+  "$PYTHON" -m agentbus bridge check --profile agentbus/resources/bridge/openai-compatible-messages.json >/dev/null
+env OPENAI_COMPAT_ENDPOINT=https://127.0.0.1:9/v1/chat/completions \
   OPENAI_COMPAT_MODEL=smoke-model \
   OPENAI_COMPAT_API_KEY=smoke-key \
   OPENAI_COMPAT_RESPONSE_TO=operator \
-  "$PYTHON" -m agentbus bridge check --file agentbus/resources/bridge/openai-compatible-tasks.json >/dev/null
-env OPENAI_COMPAT_ENDPOINT=http://127.0.0.1:9/v1/chat/completions \
+  "$PYTHON" -m agentbus bridge check --profile agentbus/resources/bridge/openai-compatible-tasks.json >/dev/null
+env OPENAI_COMPAT_ENDPOINT=https://127.0.0.1:9/v1/chat/completions \
   OPENAI_COMPAT_MODEL=smoke-model \
   OPENAI_COMPAT_API_KEY=smoke-key \
   OPENAI_COMPAT_RESPONSE_TO=operator \
-  "$PYTHON" -m agentbus bridge check --file agentbus/resources/bridge/openai-compatible-tickets.json >/dev/null
+  "$PYTHON" -m agentbus bridge check --profile agentbus/resources/bridge/openai-compatible-tickets.json >/dev/null
 
 cat > "$TMP/bridge-invalid-mode.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"bad","mode":"inbox","handler":{"type":"monitor"}}
 JSON
-if ab bridge check --file "$TMP/bridge-invalid-mode.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-invalid-mode.json" >/dev/null 2>&1; then
   echo "invalid bridge mode passed" >&2
   exit 1
 fi
 cat > "$TMP/bridge-missing-event.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"missing-event","handler":{"type":"monitor"}}
 JSON
-if ab bridge check --file "$TMP/bridge-missing-event.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-missing-event.json" >/dev/null 2>&1; then
   echo "missing event bridge profile passed" >&2
   exit 1
 fi
 cat > "$TMP/bridge-missing-handler.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"missing-handler","event":"message.created"}
 JSON
-if ab bridge check --file "$TMP/bridge-missing-handler.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-missing-handler.json" >/dev/null 2>&1; then
   echo "missing handler bridge profile passed" >&2
   exit 1
 fi
 cat > "$TMP/bridge-bad-args.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"bad-args","event":"message.created","handler":{"type":"agent","provider":"codex","args":"--model x"}}
 JSON
-if ab bridge check --file "$TMP/bridge-bad-args.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-bad-args.json" >/dev/null 2>&1; then
   echo "bad args bridge profile passed" >&2
   exit 1
 fi
 cat > "$TMP/bridge-bad-claude-prompt.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"bad-claude","event":"message.created","handler":{"type":"agent","provider":"claude","args":["-p"]}}
 JSON
-if ab bridge check --file "$TMP/bridge-bad-claude-prompt.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-bad-claude-prompt.json" >/dev/null 2>&1; then
   echo "claude prompt override bridge profile passed" >&2
   exit 1
 fi
 cat > "$TMP/bridge-bad-env.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"bad-env","event":"message.created","handler":{"type":"monitor"},"envs":["BAD-NAME"]}
 JSON
-if ab bridge check --file "$TMP/bridge-bad-env.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-bad-env.json" >/dev/null 2>&1; then
   echo "bad env bridge profile passed" >&2
   exit 1
 fi
@@ -259,14 +319,14 @@ fi
 cat > "$TMP/bridge-bad-target-list.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"bad-target-list","event":"message.created","matcher":{"target":["codex","claude"]},"handler":{"type":"monitor"}}
 JSON
-if ab bridge check --file "$TMP/bridge-bad-target-list.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-bad-target-list.json" >/dev/null 2>&1; then
   echo "target list bridge profile passed" >&2
   exit 1
 fi
 cat > "$TMP/bridge-bad-target-all.json" <<'JSON'
 {"schemaVersion":"bridge-profile.v1","name":"bad-target-all","event":"message.created","matcher":{"target":"all"},"handler":{"type":"monitor"}}
 JSON
-if ab bridge check --file "$TMP/bridge-bad-target-all.json" >/dev/null 2>&1; then
+if ab bridge check --profile "$TMP/bridge-bad-target-all.json" >/dev/null 2>&1; then
   echo "target all bridge profile passed" >&2
   exit 1
 fi
@@ -292,6 +352,8 @@ ab bridge run --profile "$TMP/monitor-profile.json" --once >"$TMP/sensitive-brid
 grep -q '"blocked": true' "$TMP/sensitive-bridge.out"
 ! grep -q "secret smoke body" "$TMP/sensitive-bridge.out"
 ! grep -R "secret smoke body" "$AGENTBUS_BUS_DIR/bridge" >/dev/null 2>&1
+printf 'Smoke Key Context\n\nKeep teammate cycles aligned.' | ab context set --stdin --by operator >/dev/null
+ab context show | grep -q 'Smoke Key Context'
 
 cat > "$TMP/bin-codex" <<'SH2'
 #!/usr/bin/env sh
@@ -302,7 +364,43 @@ fi
 shift
 printf '%s\n' "$@" > "$CODEX_ARGS_CAPTURE"
 cat > "$CODEX_STDIN_CAPTURE"
-printf 'mock codex completed\n'
+"${PYTHON:-python3}" - "$CODEX_STDIN_CAPTURE" <<'PY'
+import json, subprocess, sys
+work = json.load(open(sys.argv[1]))
+trigger = work.get("trigger") or {}
+message_id = trigger.get("messageId", "")
+task_id = trigger.get("taskId", "")
+subject = trigger.get("subject", "")
+from_agent = work.get("agent", "codex")
+self_target = work.get("agentName") or from_agent
+to = ((trigger.get("message") or {}).get("from") or "operator")
+base = [sys.executable, "-m", "agentbus"]
+cmds = []
+if subject == "Run codex follow-up":
+    body = "mock codex follow-up report"
+    cmds.append(base + ["message", "send", "--from", from_agent, "--to", to, "--kind", "report", "--subject", "Codex cycle report", "--body", body, "--reply-to", message_id])
+    cmds.append(base + ["message", "send", "--from", from_agent, "--to", self_target, "--kind", "request", "--subject", "Mock follow-up slice", "--body", "continue after first cycle", "--reply-to", message_id])
+    if task_id:
+        cmds[0].extend(["--task", task_id])
+        cmds[1].extend(["--task", task_id])
+        cmds.append(base + ["task", "state", "--id", task_id, "--state", "working", "--by", from_agent, "--note", "mock follow-up left"])
+    cmds.append(base + ["agent", "set", "--id", from_agent, "--state", "waiting", "--note", "mock follow-up waiting"])
+else:
+    body = "mock codex completed"
+    cmds.append(base + ["message", "send", "--from", from_agent, "--to", to, "--kind", "report", "--subject", "Codex cycle report", "--body", body, "--reply-to", message_id])
+    if task_id:
+        cmds[0].extend(["--task", task_id])
+        cmds.append(base + ["task", "state", "--id", task_id, "--state", "completed", "--by", from_agent, "--note", "mock cycle completed"])
+    cmds.append(base + ["agent", "set", "--id", from_agent, "--state", "waiting", "--note", "mock cycle waiting"])
+cmds.append(base + ["agent", "ack", "--id", from_agent, message_id])
+if task_id:
+    for cmd in cmds:
+        if cmd[:4] == base + ["agent", "set"]:
+            cmd.extend(["--task", task_id])
+for cmd in cmds:
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+PY
+printf 'mock codex cycle completed\n'
 SH2
 chmod +x "$TMP/bin-codex"
 mkdir -p "$TMP/bin"
@@ -313,11 +411,10 @@ cat > "$TMP/codex-profile.json" <<'JSON'
   "name": "smoke-codex-runner",
   "event": "message.created",
   "matcher": {"target": "codex", "kind": ["request"]},
-  "handler": {"type": "agent", "provider": "codex", "args": ["--mock-option"]},
-  "fromStart": true,
-  "markDelivered": true
+  "handler": {"type": "agent", "provider": "codex", "args": ["--mock-option"]}
 }
 JSON
+cp "$TMP/codex-profile.json" "$AGENTBUS_BUS_DIR/bridge/smoke-codex-runner.json"
 CODEX_TASK=$(ab task new --title "Codex bridge runner" --by operator --assign codex)
 CODEX_MSG=$(ab message send --from operator --to codex --kind request --subject "Run codex" --body "run body" --task "$CODEX_TASK")
 CODEX_ARGS_CAPTURE="$TMP/codex.args" CODEX_STDIN_CAPTURE="$TMP/codex.stdin" PATH="$TMP/bin:$PATH" \
@@ -336,16 +433,140 @@ tasks = bus.read_jsonl(paths["tasks"])
 acks = bus.read_jsonl(paths["acks"])
 delivered = bus.read_jsonl(paths["delivered"])
 assert "--mock-option" in args
-assert "You are an agent-bus runtime" in args
-assert work["schemaVersion"] == "agent-runner-work.v1"
-assert work["messageId"] == msg_id
+assert "external loop cycle" in args
+assert "<agent-bus-system>" in args
+assert "<key-context>" in args
+assert work["schemaVersion"] == "teammate-cycle.v1"
+assert work["keyContext"]["body"].startswith("Smoke Key Context")
+assert work["trigger"]["messageId"] == msg_id
+assert work["trigger"]["taskId"] == task_id
+assert Path(work["busDir"]).resolve() == Path(bus_dir).resolve()
 assert any(row.get("reply_to") == msg_id and row.get("body") == "mock codex completed" for row in messages)
 assert any(row.get("task_id") == task_id and row.get("state") == "completed" for row in tasks)
-assert any(row.get("agent") == "codex" and row.get("id") == msg_id for row in acks)
-assert any(row.get("agent") == "codex" and row.get("id") == msg_id for row in delivered)
+assert any(row.get("agent") == work["agent"] and row.get("id") == msg_id for row in acks)
+assert any(row.get("agent") == work["agent"] and row.get("id") == msg_id for row in delivered)
+PY
+CODEX_TEAMMATE_RUN_TASK=$(ab task new --title "Codex teammate run" --by operator --assign codex)
+CODEX_TEAMMATE_RUN_MSG=$(ab message send --from operator --to codex --kind request --subject "Run codex teammate" --body "teammate runner body" --task "$CODEX_TEAMMATE_RUN_TASK")
+ab teammate run --profile smoke-codex-runner --once --dry-run > "$TMP/codex-teammate-run-dry.json"
+"$PYTHON" - "$TMP/codex-teammate-run-dry.json" "$CODEX_TEAMMATE_RUN_MSG" "$CODEX_TEAMMATE_RUN_TASK" <<'PY'
+import json, sys
+work = json.load(open(sys.argv[1]))
+msg_id, task_id = sys.argv[2:]
+assert work["schemaVersion"] == "teammate-cycle.v1"
+assert work["keyContext"]["body"].startswith("Smoke Key Context")
+assert work["trigger"]["messageId"] == msg_id
+assert work["trigger"]["taskId"] == task_id
+PY
+CODEX_ARGS_CAPTURE="$TMP/codex-teammate-run.args" CODEX_STDIN_CAPTURE="$TMP/codex-teammate-run.stdin" PATH="$TMP/bin:$PATH" \
+  ab teammate run --profile smoke-codex-runner --once > "$TMP/codex-teammate-run.out"
+"$PYTHON" - "$TMP/codex-teammate-run.args" "$TMP/codex-teammate-run.stdin" "$AGENTBUS_BUS_DIR" "$CODEX_TEAMMATE_RUN_MSG" "$CODEX_TEAMMATE_RUN_TASK" <<'PY'
+import json, sys
+from pathlib import Path
+from agentbus import bus
+args_path, stdin_path, bus_dir, msg_id, task_id = sys.argv[1:]
+bd = Path(bus_dir)
+args = open(args_path).read()
+work = json.load(open(stdin_path))
+agent_id = bus.resolve_agent_id(bd, "codex")
+status = bus.load_json(bus.paths(bd)["status"], {"agents": {}}).get("agents", {}).get(agent_id, {})
+assert "--mock-option" in args
+assert "<agent-bus-system>" in args
+assert work["schemaVersion"] == "teammate-cycle.v1"
+assert work["keyContext"]["body"].startswith("Smoke Key Context")
+assert work["agent"] == agent_id
+assert work["trigger"]["messageId"] == msg_id
+assert work["trigger"]["taskId"] == task_id
+assert status.get("provider") == "codex"
+assert status.get("runner") == "teammate-run"
+assert any(row.get("agent") == agent_id and row.get("id") == msg_id for row in bus.read_jsonl(bus.paths(bd)["acks"]))
+assert any(row.get("agent") == agent_id and row.get("id") == msg_id for row in bus.read_jsonl(bus.paths(bd)["delivered"]))
 PY
 
-CODEX_TOKEN=$(ab auth grant --agent codex)
+FOLLOWUP_TASK=$(ab task new --title "Codex teammate follow-up" --by operator --assign codex)
+FOLLOWUP_MSG=$(ab message send --from operator --to codex --kind request --subject "Run codex follow-up" --body "leave a bounded self follow-up" --task "$FOLLOWUP_TASK")
+CODEX_ARGS_CAPTURE="$TMP/codex-follow-up.args" CODEX_STDIN_CAPTURE="$TMP/codex-follow-up.stdin" PATH="$TMP/bin:$PATH" \
+  ab teammate run --profile smoke-codex-runner --once > "$TMP/codex-follow-up.out"
+"$PYTHON" - "$AGENTBUS_BUS_DIR" "$FOLLOWUP_MSG" "$FOLLOWUP_TASK" <<'PY'
+import sys
+from pathlib import Path
+from agentbus import bus
+bd = Path(sys.argv[1])
+trigger_id, task_id = sys.argv[2:]
+agent_id = bus.resolve_agent_id(bd, "codex")
+messages = bus.read_jsonl(bus.paths(bd)["messages"])
+assert any(row.get("from") == agent_id and row.get("reply_to") == trigger_id and row.get("kind") == "report" for row in messages)
+followups = [row for row in messages if row.get("from") == agent_id and row.get("to") in {"codex", agent_id} and row.get("kind") == "request" and row.get("task_id") == task_id]
+assert followups, "self follow-up request missing"
+PY
+ab teammate run --profile smoke-codex-runner --once --dry-run > "$TMP/codex-follow-up-next.json"
+"$PYTHON" - "$TMP/codex-follow-up-next.json" "$FOLLOWUP_TASK" <<'PY'
+import json, sys
+work = json.load(open(sys.argv[1]))
+task_id = sys.argv[2]
+assert work["trigger"]["subject"] == "Mock follow-up slice"
+assert work["trigger"]["taskId"] == task_id
+PY
+
+cat > "$TMP/bin/codex" <<'SH2'
+#!/usr/bin/env sh
+if [ "$1" != "exec" ]; then
+  echo "expected codex exec" >&2
+  exit 9
+fi
+cat >/dev/null
+printf 'operator only\n'
+SH2
+chmod +x "$TMP/bin/codex"
+NO_OUTPUT_TASK=$(ab task new --title "Codex bridge no bus records" --by operator --assign codex)
+NO_OUTPUT_MSG=$(ab message send --from operator --to codex --kind request --subject "No bus records" --body "run body" --task "$NO_OUTPUT_TASK")
+cat > "$TMP/codex-no-records-profile.json" <<JSON
+{
+  "schemaVersion": "bridge-profile.v1",
+  "name": "smoke-codex-no-records",
+  "event": "message.created",
+  "matcher": {"target": "codex", "kind": ["request"], "objectId": "$NO_OUTPUT_MSG"},
+  "handler": {"type": "agent", "provider": "codex", "args": []}
+}
+JSON
+if PATH="$TMP/bin:$PATH" ab bridge run --profile "$TMP/codex-no-records-profile.json" --once >"$TMP/codex-no-records.out" 2>"$TMP/codex-no-records.err"; then
+  echo "codex no-records runner passed" >&2
+  exit 1
+fi
+grep -q "produced no bus records" "$TMP/codex-no-records.err"
+"$PYTHON" - "$AGENTBUS_BUS_DIR" "$NO_OUTPUT_MSG" "$NO_OUTPUT_TASK" <<'PY'
+import sys
+from pathlib import Path
+from agentbus import bus
+bd = Path(sys.argv[1]); msg_id = sys.argv[2]; task_id = sys.argv[3]
+ps = bus.paths(bd)
+agent_id = bus.resolve_agent_id(bd, "codex")
+status = bus.load_json(ps["status"], {"agents": {}}).get("agents", {}).get(agent_id, {})
+tasks = bus.read_jsonl(ps["tasks"])
+delivered = bus.read_jsonl(ps["delivered"])
+assert status.get("state") == "error"
+assert any(row.get("task_id") == task_id and row.get("state") == "failed" and "no bus records" in str(row.get("note")) for row in tasks)
+assert not any(row.get("agent") == agent_id and row.get("id") == msg_id for row in delivered)
+PY
+
+CODEX_TOKEN=$(ab auth grant --agent-name codex)
+SECRET_TEAMMATE_RUN_MSG=$(ab message send --from operator --to codex --kind request --subject "Secret teammate runner failure" --body "teammate run secret body" --sensitivity restricted)
+if AGENTBUS_AGENT_TOKEN="$CODEX_TOKEN" PATH="$TMP/bin:$PATH" ab teammate run --profile smoke-codex-runner --once >"$TMP/codex-teammate-fail.out" 2>"$TMP/codex-teammate-fail.err"; then
+  echo "codex teammate run no-records passed" >&2
+  exit 1
+fi
+grep -q "produced no bus records" "$TMP/codex-teammate-fail.err"
+ab bridge status > "$TMP/bridge-status-teammate-run.out"
+grep -q 'teammate/' "$TMP/bridge-status-teammate-run.out"
+! grep -R "teammate run secret body" "$AGENTBUS_BUS_DIR/teammate-runs" >/dev/null 2>&1
+ab bus clear --all --yes >/dev/null
+if find "$AGENTBUS_BUS_DIR/teammate-runs" -type f \( -name '*.position' -o -name '*.failures.jsonl' \) 2>/dev/null | grep -q .; then
+  echo "teammate run state survived bus clear --all" >&2
+  exit 1
+fi
+cp "$TMP/bin-codex" "$TMP/bin/codex"
+
+CODEX_TOKEN=$(ab auth grant --agent-name codex)
 SECRET_CODEX_MSG=$(ab message send --from operator --to codex --kind request --subject "Sealed codex" --body "sealed codex body" --sensitivity restricted)
 CODEX_ARGS_CAPTURE="$TMP/codex-restricted.args" CODEX_STDIN_CAPTURE="$TMP/codex-restricted.stdin" AGENTBUS_AGENT_TOKEN="$CODEX_TOKEN" PATH="$TMP/bin:$PATH" \
   ab bridge run --profile "$TMP/codex-profile.json" --once > "$TMP/codex-restricted-run.out"
@@ -356,9 +577,9 @@ from agentbus import bus
 stdin_path, bus_dir, msg_id = sys.argv[1:]
 work = json.load(open(stdin_path))
 messages_text = json.dumps(bus.read_jsonl(bus.paths(Path(bus_dir))["messages"]), ensure_ascii=False)
-assert work["messageId"] == msg_id
-assert work["subject"] == "Sealed codex"
-assert work["body"] == "sealed codex body"
+assert work["trigger"]["messageId"] == msg_id
+assert work["trigger"]["subject"] == "Sealed codex"
+assert work["trigger"]["body"] == "sealed codex body"
 assert "sealed codex body" in messages_text
 assert "sealed codex body" not in (Path(bus_dir) / "store" / "capsule.sqlite").read_bytes().decode("latin1", errors="ignore")
 PY
@@ -408,7 +629,8 @@ cat > "$TMP/openai-profile.json" <<'JSON'
     "endpoint": "$OPENAI_COMPAT_ENDPOINT",
     "model": "$OPENAI_COMPAT_MODEL",
     "apiKey": "$OPENAI_COMPAT_API_KEY",
-    "responseTo": "operator"
+    "responseTo": "operator",
+    "allowInsecure": true
   },
   "envs": ["OPENAI_COMPAT_ENDPOINT", "OPENAI_COMPAT_MODEL", "OPENAI_COMPAT_API_KEY"],
   "fromStart": true
@@ -438,15 +660,15 @@ OLD_BUS="$AGENTBUS_BUS_DIR"
 export AGENTBUS_BUS_DIR="$WATCH_BUS"
 ab bus init >/dev/null
 ab auth init >/dev/null
-WATCH_TOKEN=$(ab auth grant --agent reviewer)
+WATCH_TOKEN=$(ab auth grant --agent-name reviewer)
 ab message send --from operator --to reviewer --kind request --subject "Secret watch" --body "watch secret body" --sensitivity restricted >/dev/null
 ab bridge watch --types message.created --from-start --once >"$TMP/watch-sensitive.out" 2>"$TMP/watch-sensitive.err"
 grep -q '"blocked": true' "$TMP/watch-sensitive.out"
 ! grep -q "watch secret body" "$TMP/watch-sensitive.out"
 ! grep -R "watch secret body" "$WATCH_BUS/bridge" >/dev/null 2>&1
-ab agent inbox --agent reviewer >"$TMP/restricted-inbox-redacted.out"
+ab agent inbox --name reviewer >"$TMP/restricted-inbox-redacted.out"
 ! grep -q "watch secret body" "$TMP/restricted-inbox-redacted.out"
-AGENTBUS_AGENT_TOKEN="$WATCH_TOKEN" ab agent inbox --agent reviewer >"$TMP/restricted-inbox-raw.out"
+AGENTBUS_AGENT_TOKEN="$WATCH_TOKEN" ab agent inbox --name reviewer >"$TMP/restricted-inbox-raw.out"
 grep -q "watch secret body" "$TMP/restricted-inbox-raw.out"
 export AGENTBUS_BUS_DIR="$OLD_BUS"
 
@@ -531,7 +753,7 @@ import json, sys
 state = json.load(open(sys.argv[1]))
 assert "task_reports" in state
 assert any(row.get("skill_id") == "smoke-skill" for row in state.get("skills", []))
-assert any(row.get("name") == "A2A inbound" for row in state.get("bridge_gateways", []))
+assert any(row.get("name") == "A2A 수신" for row in state.get("bridge_gateways", []))
 assert any(row.get("name") == "smoke-monitor" for row in state.get("bridge_profiles", []))
 assert not any(row.get("source") == "package" for row in state.get("bridge_profiles", []))
 assert not any(row.get("name") == "profile.template" for row in state.get("bridge_profiles", []))
@@ -558,6 +780,11 @@ response = json.load(open(sys.argv[1]))
 assert response['jsonrpc'] == '2.0'
 assert 'result' in response
 PY
+
+touch "$AGENTBUS_BUS_DIR/bridge/stale.position" "$AGENTBUS_BUS_DIR/bridge/stale.failures.jsonl"
+ab bus clear --all --yes >/dev/null
+[ ! -e "$AGENTBUS_BUS_DIR/bridge/stale.position" ]
+[ ! -e "$AGENTBUS_BUS_DIR/bridge/stale.failures.jsonl" ]
 
 if command -v uv >/dev/null 2>&1; then
   OUT=$(mktemp -d "${TMPDIR:-/tmp}/agentbus-dist.XXXXXX")
@@ -586,8 +813,20 @@ required = {
     'agentbus/resources/demo-bus/tasks.jsonl',
     'agentbus/resources/demo-bus/issues.jsonl',
     'agentbus/resources/demo-bus/status.json',
+    'agentbus/resources/demo-bus/key_context.json',
+    'agentbus/resources/demo-bus/bridge/codex-ui-runner.json',
+    'agentbus/resources/demo-bus/bridge/codex-docs-runner.json',
+    'agentbus/resources/demo-bus/bridge/codex-policy-runner.json',
+    'agentbus/resources/demo-bus/bridge/claude-safety-runner.json',
+    'agentbus/resources/demo-bus/bridge/demo-monitor.json',
+    'agentbus/resources/demo-bus/bridge/demo-a2a-outbound.json',
+    'agentbus/resources/demo-bus/teammate-runs/demo-monitor.position',
+    'agentbus/resources/demo-bus/teammate-runs/demo-a2a-outbound.position',
+    'agentbus/resources/demo-bus/teammate-runs/demo-a2a-outbound.failures.jsonl',
     'agentbus/resources/demo-bus/skills/loop-closure-report/SKILL.md',
     'agentbus/resources/demo-bus/skills/loop-closure-report/evidence.jsonl',
+    'agentbus/resources/demo-bus/skills/demo-showcase-review/SKILL.md',
+    'agentbus/resources/demo-bus/skills/demo-showcase-review/evidence.jsonl',
     'agentbus/resources/smoke/publish-smoke.sh',
     'agentbus/schemas/a2a-rpc.v1.md',
     'agentbus/schemas/assessment-packet.v1.md',
@@ -596,6 +835,7 @@ required = {
     'agentbus/schemas/events.v1.md',
     'agentbus/skills/agent-bus-loop/SKILL.md',
     'agentbus/skills/agent-bus-workflow/SKILL.md',
+    'agentbus/skills/lead-strategic-approach/SKILL.md',
     'agentbus/static/dashboard.js',
     'agentbus/vendor/katex/katex.min.js',
 }
@@ -624,8 +864,9 @@ PY
   test -f "$INSTALLED_WORKFLOW"
   INSTALL_BUS="$TMP/install-bus"
   "$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" bus init >/dev/null
+  "$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" agent create --name reviewer >/dev/null
   INSTALL_MSG=$("$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" message send --from user --to reviewer --kind request --subject "Install smoke" --body "installed wheel")
-  "$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" agent inbox --agent reviewer | grep -q "$INSTALL_MSG"
+  "$INSTALL_VENV/bin/agentbus" --bus-dir "$INSTALL_BUS" agent inbox --name reviewer | grep -q "$INSTALL_MSG"
   rm -rf "$OUT" build agent_bus.egg-info agent-bus.egg-info agentbus/__pycache__
 fi
 

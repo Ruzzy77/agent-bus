@@ -17,6 +17,5 @@
     "OPENAI_COMPAT_RESPONSE_TO"
   ],
   "intervalSeconds": 1,
-  "maxSeconds": 0,
   "timeoutSeconds": 120
 }

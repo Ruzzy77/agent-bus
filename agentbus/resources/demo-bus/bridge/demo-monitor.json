@@ -1,0 +1,24 @@
+{
+  "event": [
+    "message.created",
+    "ticket.created",
+    "task.updated"
+  ],
+  "fromStart": true,
+  "handler": {
+    "type": "monitor"
+  },
+  "intervalSeconds": 1,
+  "matcher": {
+    "kind": [
+      "request",
+      "report",
+      "task",
+      "ticket",
+      "stop"
+    ]
+  },
+  "name": "demo-monitor",
+  "positionFile": "teammate-runs/demo-monitor.position",
+  "schemaVersion": "bridge-profile.v1"
+}

@@ -1,0 +1,1 @@
+{"error": "bridge handler failed: local demo endpoint refused connection", "event_id": "messages:12:2026-06-20T03:12:00.000+00:00:m-demo-012", "event_type": "message.created", "handler": "a2a", "object": {"id": "m-demo-012", "type": "message"}, "profile": "demo-a2a-outbound", "returncode": 1, "time": "2026-06-20T03:13:30.000Z"}
