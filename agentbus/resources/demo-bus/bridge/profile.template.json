@@ -1,0 +1,17 @@
+{
+  "event": "message.created",
+  "handler": {
+    "type": "monitor"
+  },
+  "matcher": {
+    "kind": [
+      "request",
+      "task",
+      "ticket",
+      "stop"
+    ],
+    "target": "agent-id"
+  },
+  "name": "local-monitor",
+  "schemaVersion": "bridge-profile.v1"
+}

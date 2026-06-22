@@ -1,6 +1,6 @@
 # demo-bus
 
-Safe sample bus for dashboard screenshots and local UI checks. The fixture shows Key Context, teammate reports, task and ticket states, bridge profiles, gateway cards, restricted records, and packet/security boundaries without packaging raw restricted content or fixed credentials.
+Safe sample bus for dashboard screenshots and local UI checks. The fixture shows Key Context, teammate reports, task and ticket states, bridge profiles, gateway cards, restricted records, and packet/security boundaries without packaging restricted originals or fixed credentials.
 
 Run it from a copy and migrate the copy into a capsule so dashboard send/delete/auth actions stay local to the temporary demo bus:
 

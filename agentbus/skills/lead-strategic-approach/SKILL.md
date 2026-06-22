@@ -8,7 +8,7 @@ description: >-
 
 # lead strategic approach
 
-Use this with the agent-bus workflow when the lead owns the shape of a multi-step or multi-teammate task. It covers the lead's strategic approach; ordinary inbox handling stays in the loop and workflow skills.
+Use this with the agent-bus workflow when the lead owns the shape of a multi-step or multi-teammate task. It covers the lead's strategic approach; ordinary inbox handling stays in the loop skill and its workflow reference.
 
 ## Lead center
 
@@ -17,7 +17,7 @@ The lead keeps a stable center while the work receives pressure from user correc
 - user intent and the defect or drift the user is trying to avoid
 - the live artifact, including nearby context and adjacent states
 - the expected picture of the completed work
-- Key Context as the current shared interpretation for the next cycle
+- Key Context as the current shared interpretation for the next run
 
 A lead with a center can change strategy without losing direction. Treat outside suggestions as judgment material, then decide what to reflect, narrow, reject, or turn into follow-up work.
 
@@ -67,7 +67,7 @@ Update Key Context when:
 - user intent is clarified or corrected
 - teammate reports change the center of the work
 - the expected picture changes after direct inspection
-- the next cycle needs a different judgment lens
+- the next run needs a different judgment lens
 - closure should preserve a reusable lesson for the next loop
 
 Keep task lists, status summaries, and general rules in their own records. Key Context should change what the next teammate considers important.
@@ -101,7 +101,7 @@ Then decide what to reflect, reframe, discard, narrow, or defer. If the result d
 
 Use the bus to reduce default model habits that make work feel generic. Watch for these signs:
 
-- a keyword from the user turns into broad positioning instead of target-specific work
+- a keyword from the user turns into broad framing instead of target-specific work
 - a balanced bullet structure replaces direct judgment
 - a small request becomes a one-value patch without neighboring checks
 - teammate wording is copied instead of re-judged

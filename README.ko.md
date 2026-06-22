@@ -4,7 +4,7 @@
 
 > 여러 에이전트가 같은 로컬 기록을 보며 요청, 상태, 보고, 판단 재료를 이어가는 작업 공유 도구
 
-프로젝트에서 `agentbus bus serve`를 실행하면 secure capsule channel과 대시보드가 열립니다. Codex, Claude, Gemini, 로컬 teammate는 이 channel에 메시지, task, ticket, 보고를 남기고 같은 기록을 읽습니다.
+프로젝트에서 `agentbus bus serve`를 실행하면 암호화된 협업 채널과 대시보드가 열립니다. Codex, Claude, Gemini, 로컬 teammate는 같은 채널에 메시지, task, ticket, 보고를 남기고 같은 기록을 읽습니다.
 
 lead는 사용자가 남긴 요청을 읽어 task, ticket, stop, Key Context로 정리합니다. teammate가 남긴 판단은 lead가 다시 보고 다음 작업 방향과 종료 보고로 묶습니다.
 
@@ -18,12 +18,10 @@ lead는 사용자가 남긴 요청을 읽어 task, ticket, stop, Key Context로 
 - Task: 실제로 진행할 작업과 상태를 관리합니다.
 - Ticket: 사용자 검토 뒤 작업으로 옮길 후보를 남깁니다.
 - Key Context: 현재 작업을 어떤 관점에서 이어갈지 적습니다.
-- Teammate: bus request가 들어오면 로컬 CLI 에이전트를 깨웁니다.
-- Bridge: bus event를 watcher, webhook, model API, A2A 경계로 넘깁니다.
-- Packet: AAS data packet과 A2A request/response를 만듭니다.
+- Teammate: 요청 메시지가 들어오면 로컬 CLI 에이전트를 깨웁니다.
 - Secure capsule: `.agent-bus/` 안에 암호화 저장소를 두고 token으로 원문 보기를 제어합니다.
 
-## Lifecycle
+## Workflow
 
 목표와 경계만 정하면 바로 시작합니다. 설치된 skill이 있는 에이전트에게 `/agent-bus-loop` 또는 “agent-bus로 협업 루프를 시작해줘”라고 요청하면, 첫 에이전트가 lead를 맡아 요구사항 정리부터 종료 보고까지 진행합니다.
 
@@ -37,13 +35,13 @@ lead는 사용자가 남긴 요청을 읽어 task, ticket, stop, Key Context로 
 
 Lead는 다음 일을 맡습니다.
 
-- 목표, 범위, 민감 데이터 여부, 참여할 teammate, 완료 기준을 정리합니다.
+- 목표, 범위, 보안 단계, 참여할 teammate, 완료 기준을 정리합니다.
 - 작업의 의미와 판단 성격을 보고 task, ticket, request를 나눕니다.
 - Key Context에 현재 작업을 해석하는 기준을 남깁니다.
-- 각 teammate 요청에는 담당 범위, 확인할 자료, 보고 형식, 다음 cycle 조건을 담습니다.
+- 각 teammate 요청에는 담당 범위, 확인할 자료, 보고 형식, 다음 실행 조건을 담습니다.
 - teammate 보고가 모이면 lead가 원자료와 산출물을 다시 보고 판단을 합칩니다.
-- 사용자 결정이 필요하면 `input_required`나 user request로 올립니다.
-- 종료 전 lead inbox를 다시 확인하고, 남은 일은 follow-up task나 ticket으로 남깁니다.
+- 사용자 결정이 필요하면 상태와 메시지로 다시 묻습니다.
+- 종료 전 lead에게 온 새 메시지를 다시 확인하고, 남은 일은 후속 task나 ticket으로 남깁니다.
 - 마지막 report로 종료 보고서를 남긴 뒤 task를 `completed`, agent를 `done`, bus를 `loop_closed`로 닫습니다.
 
 사용자는 대시보드 메시지 작성 영역에서 `메모`, `요청`, `보고`, `작업`, `티켓`, `정지`를 남깁니다. 작업·티켓·정지는 lead에게 보내는 관리 요청입니다. lead는 그 요청을 현재 맥락에 맞게 실제 기록으로 옮깁니다.
@@ -56,8 +54,8 @@ Key Context는 사용자와 lead가 함께 다듬는 현재 작업의 핵심 맥
 - 일반 지침과 runner 설정은 skill과 profile에 둡니다.
 - Key Context에는 지금 작업을 어떤 관점에서 이어갈지 남깁니다.
 - 민감한 원문은 `restricted` message, task, ticket이나 파일 참조에 둡니다.
-- lead는 teammate cycle 전에 Key Context를 확인해 다음 요청의 방향을 맞춥니다.
-- `teammate run`은 Key Context를 cycle 입력에 넣고, prompt에는 `<agent-bus-system>` block으로 구분해 전달합니다.
+- lead는 teammate 실행 전에 Key Context를 확인해 다음 요청의 방향을 맞춥니다.
+- `teammate run`은 Key Context를 실행 입력에 넣고, prompt에는 `<agent-bus-system>` block으로 구분해 전달합니다.
 - CLI에서는 `agentbus context show`와 `agentbus context set --stdin`으로 확인하거나 갱신합니다.
 
 ## Quick Start
@@ -82,9 +80,9 @@ agentbus bus init
 agentbus bus serve      # http://127.0.0.1:8765
 ```
 
-- `AGENTBUS_BUS_DIR` 또는 `--bus-dir`로 여러 agent가 같은 channel을 선택합니다.
-- `agentbus bus serve`가 secure capsule API와 대시보드를 함께 엽니다.
-- daemon이 꺼져 있으면 agent가 쓰는 명령은 연결 오류를 반환합니다.
+- `AGENTBUS_BUS_DIR` 또는 `--bus-dir`로 여러 agent가 같은 채널을 선택합니다.
+- `agentbus bus serve`가 로컬 API와 대시보드를 함께 엽니다.
+- bus 서버가 꺼져 있으면 agent가 쓰는 명령은 연결 오류를 반환합니다.
 
 ### Try the demo bus
 
@@ -119,52 +117,38 @@ agentbus agent set --name my-agent --state running --note "started"
 agentbus agent inbox --name my-agent
 agentbus message send --from my-agent --to all --kind report --subject "status" --body "..."
 agentbus task state --id t-xxxx --state completed --by my-agent
-agentbus agent ack --name my-agent m-xxxx
 ```
 
 - 설치된 skill이 있으면 `/agent-bus-loop`로 시작합니다.
-- 텍스트 prompt 환경에서는 `agentbus guide loop` 출력을 붙여 넣습니다.
+- 텍스트로 붙여 넣는 환경에서는 `agentbus guide loop` 출력을 사용합니다.
 - `agentbus agent create --name` 또는 첫 `agentbus agent set --name`에서 내부 `a-...` id가 등록됩니다.
-- `teammate run`이 성공한 cycle을 기록하면, 그 cycle을 시작한 request를 자동 ack합니다.
+- `teammate run`이 성공한 실행을 기록하면, 그 실행을 시작한 request를 자동 ack합니다.
+- `agent ack`는 `teammate run` 없이 직접 inbox를 처리할 때만 사용합니다.
 
-### Request work directly
+### Ask through compose
 
-에이전트 판단으로 바로 진행할 작업은 task와 request message로 시작합니다.
+대시보드 compose가 기본 요청 경로입니다.
 
-```bash
-TASK_ID=$(agentbus task new --title "dashboard composer alignment review" --by user --assign my-agent)
-agentbus message send --from user --to my-agent --kind request \
-  --subject "composer alignment review" \
-  --body "판단 성격: interaction design. 대상: dashboard composer controls. 인접 영향: focus, dark mode, send button alignment. 1줄/여러 줄 입력 상태를 확인하고, 가장 작은 안전한 수정과 남은 위험을 report로 남겨줘." \
-  --task "$TASK_ID"
-```
-
-### Use tickets
-
-Ticket은 사람 검토 뒤 task로 옮길 후보 작업에 씁니다.
-
-```bash
-agentbus ticket new --title "dashboard composer follow-up" --by user
-agentbus ticket accept --id i-xxxx --by user --to my-agent --note "keep wording neutral"
-agentbus task state --id t-xxxx --state input_required --by my-agent --note "decision needed"
-```
+- `메모`, `요청`, `보고`는 그대로 메시지 타임라인에 남습니다.
+- `작업`, `티켓`, `정지`는 lead에게 보내는 관리 요청으로 남습니다.
+- lead는 해당 요청을 현재 맥락에 맞춰 task, ticket, stop 기록으로 옮깁니다.
+- `task new`, `ticket new`, `bus stop`은 operator나 자동화가 직접 기록을 다룰 때 사용합니다.
 
 ## Skills
 
-agent-bus의 skill은 에이전트가 시작 절차를 찾고, 프로젝트 안에서 다시 쓸 작업 흐름을 남길 때 씁니다.
+agent-bus의 skill은 에이전트에게 loop 진입점과 lead 판단 방식을 전달할 때 사용합니다. 상세 workflow는 `agent-bus-loop` 내부 reference와 `agentbus guide workflow`에서 확인합니다.
 
-### Agent loop skills
+### Agent skills
 
-- `agent-bus-loop`: loop 시작, 중단, 종료 요청용 진입 skill
-- `agent-bus-workflow`: inbox, ack, task state, stop, ticket, bridge 처리 workflow
-- `lead-strategic-approach`: 예상 그림, 사용자 정렬, Key Context 조율, teammate fan-out, 인과 점검을 다루는 lead skill
-- `agentbus guide loop`: prompt에 붙여 넣을 loop 시작 안내 출력
-- `agentbus guide workflow`: 전체 workflow와 종료 보고 안내 출력
+- `agent-bus-loop`: loop 시작, 재개, 중단, 종료 요청을 처리하는 진입 skill
+- `lead-strategic-approach`: 예상 결과, 사용자 정렬, Key Context, teammate 작업 분배, 인과 점검을 다루는 lead skill
+- `agentbus guide loop`: prompt에 붙여 넣을 loop 진입 안내 출력
+- `agentbus guide workflow`: 상세 workflow reference와 종료 보고 형식 출력
 
 ```bash
 : "${AGENT_SKILLS_DIR:?set the agent skills directory}"
 mkdir -p "$AGENT_SKILLS_DIR"
-skills_src="$(dirname "$(dirname "$(agentbus guide workflow --path)")")"
+skills_src="$(dirname "$(dirname "$(agentbus guide loop --path)")")"
 for src in "$skills_src"/*; do
   test -d "$src" || continue
   dst="$AGENT_SKILLS_DIR/$(basename "$src")"
@@ -175,21 +159,17 @@ done
 
 ### Local skills
 
-로컬 스킬은 프로젝트 안에서 다시 쓸 작업 흐름을 남기는 기록입니다.
+로컬 스킬은 실제 작업에서 다시 쓸 흐름이 확인됐을 때만 남깁니다.
 
-- 실제 작업 중 다시 쓸 흐름이나 고친 경로가 생기면 `.agent-bus/skills/<skill-id>/SKILL.md`에 남깁니다.
-- 사용 근거는 `agentbus skill evidence`로 추가합니다.
+- `.agent-bus/skills/<skill-id>/SKILL.md`에 재사용할 절차나 고친 경로를 적습니다.
 - `agentbus guide loop`와 `agentbus guide workflow`는 시작 지점에서 로컬 스킬 요약을 함께 표시합니다.
-- 종료 판단에서는 `agentbus skill review`로 유지, 보관, 설치 후보, 묶기, 줄이기를 결정합니다.
-- 검수를 처리한 경계는 `agentbus skill state`로 남깁니다.
+- 스킬을 실제로 쓰거나 수정한 경우에만 `agentbus skill evidence`와 `agentbus skill review`를 실행합니다.
+- 검수 결과를 반영한 시점은 `agentbus skill state`로 남깁니다.
 
 ```bash
 agentbus skill new loop-close --description "종료 보고를 짧고 추적 가능하게 남긴다"
 agentbus skill list
 agentbus skill show <skill-id>
-agentbus skill evidence <skill-id> --type check --ref <message-or-file-ref> --note "재사용할 관찰"
-agentbus skill review
-agentbus skill state <skill-id> --state active
 ```
 
 ## Data Handling
@@ -216,13 +196,13 @@ agentbus packet send --protocol a2a --file request.json --endpoint https://examp
 
 ### Sensitive data
 
-민감 데이터는 sensitivity와 token 권한으로 다룹니다.
+민감 데이터는 보안 단계와 token 권한으로 다룹니다.
 
 - `normal`: 로컬/외부 원문 사용 가능
-- `internal`: 로컬 원문 공유, 외부에는 redacted view 전송
-- `restricted`: 권한 있는 agent와 dashboard viewer만 원문 열람
+- `internal`: 로컬 원문 공유, 외부에는 가린 내용만 전송
+- `restricted`: 권한 있는 agent와 대시보드 viewer만 원문 열람
 - agent 원문 보기: `AGENTBUS_AGENT_TOKEN`으로 권한 제시
-- dashboard 원문 보기: 설정 패널에서 viewer token 입력
+- 대시보드 원문 보기: 설정 패널에서 viewer token 입력
 - token 출력: 발급 시 한 번만 표시
 
 ```bash
@@ -238,61 +218,60 @@ agentbus bus security-check
 
 ### Security rules
 
-agent-bus는 로컬 신뢰 경계 안에서 capsule API, 암호화 저장, token 권한, redacted view를 함께 씁니다.
+agent-bus는 로컬 신뢰 경계 안에서 암호화 저장, 로컬 API, token 권한을 함께 씁니다.
 
 #### 저장과 경계
 
-- `.agent-bus/channel.json`에는 공개 channel metadata를 둡니다.
-- `.agent-bus/store/capsule.sqlite`에는 본문 성격의 필드를 AEAD 암호화 payload로 저장합니다.
-- raw key는 프로젝트 밖 사용자 config에 둡니다.
-- 대시보드 write API는 local origin의 JSON POST 요청을 처리합니다.
+- `.agent-bus/channel.json`에는 공개해도 되는 채널 정보를 둡니다.
+- `.agent-bus/store/capsule.sqlite`에는 본문을 암호화해 저장합니다.
+- 암호화 키는 프로젝트 밖 사용자 설정 영역에 둡니다.
+- 대시보드는 로컬에서 온 JSON 요청만 처리합니다.
 
 #### 권한
 
 - `agentbus auth grant --agent-id <id>` 또는 `agentbus auth grant --agent-name <name>`은 agent token을 발급합니다.
 - token은 `AGENTBUS_AGENT_TOKEN`으로 전달합니다.
 - 같은 id에 다시 grant하면 token이 교체됩니다.
-- `agentbus auth grant --viewer <name> --ttl-seconds <seconds>`는 dashboard viewer token을 발급합니다.
+- `agentbus auth grant --viewer <name> --ttl-seconds <seconds>`는 대시보드 viewer token을 발급합니다.
 - viewer token이 교체되거나 만료되면 대시보드 세션의 원문 보기도 해제됩니다.
 
 #### 외부 전송
 
-- `restricted` source는 외부 전송을 차단합니다.
-- `internal` source는 redacted view만 전송합니다.
-- `packet send --protocol a2a`는 bearer token과 인증 정보 성격의 custom header에 `https://` endpoint를 사용합니다.
+- `restricted` 기록은 외부 전송을 차단합니다.
+- `internal` 기록은 가린 내용만 외부로 보냅니다.
+- `packet send --protocol a2a`는 인증 정보가 들어갈 때 `https://` 주소를 사용합니다.
 - `--allow-insecure`는 로컬/테스트용 재정의 옵션입니다.
-- HTTP handler(A2A profile 포함)와 OpenAI-compatible handler는 `restricted` event를 redacted notice로 처리하고 실행을 멈춥니다.
-- Local CLI teammate는 target agent token이 맞을 때만 원문 cycle 입력을 받습니다.
+- HTTP 연결(A2A profile 포함)과 OpenAI-compatible 연결은 `restricted` 기록을 처리하지 않습니다.
+- Local CLI teammate는 대상 agent token이 맞을 때만 원문을 받습니다.
 
 #### 점검
 
-- NDA 또는 restricted data가 있는 bus는 `agentbus bus security-check`로 원문 잔류, 권한, 파일 권한, secret pattern을 점검합니다.
-- 같은 OS 사용자 안에서 memory/process 접근까지 격리해야 하는 NDA 운용은 별도 OS 사용자, sandbox, container, key 미마운트 같은 실행 격리를 함께 둡니다.
+- NDA 또는 restricted data가 있는 bus는 `agentbus bus security-check`로 원문 잔류, 권한, 파일 권한, secret 의심 패턴을 점검합니다.
+- 같은 OS 사용자 안에서 프로세스 접근까지 격리해야 하는 NDA 운용은 별도 OS 사용자, sandbox, container, key 미마운트 같은 실행 격리를 함께 둡니다.
 
 ## Bridge
 
-Event bridge는 bus event를 watcher나 외부 연결로 넘깁니다.
+Bridge는 bus 활동을 운영 모니터링이나 외부 연결로 넘깁니다.
 
-### Watch events
+### Watch bus activity
 
 ```bash
 agentbus bridge watch --types message.created,ticket.created \
-  --target reviewer \
-  --position-file .agent-bus/bridge/reviewer.position
+  --target reviewer
 ```
 
 ### Use a profile
 
-Bridge profile은 bus event를 외부 handler로 넘기는 JSON 설정입니다.
+Bridge profile은 bus 활동을 어떤 연결 방식으로 처리할지 정하는 JSON 설정입니다.
 
-- `monitor`: event 관찰과 position 갱신
+- `monitor`: 새 기록 확인
 - `http`: webhook, A2A outbound 호출
 - `openai-compatible`: 외부 model API 호출
-- active profile은 `.agent-bus/bridge/*.json`에 둡니다.
+- 활성 profile은 `.agent-bus/bridge/*.json`에 둡니다.
 - `bus init`은 `.agent-bus/bridge/profile.template.json`을 만듭니다.
 - `*.template.json`은 복사용 template이며 active profile 목록에는 나오지 않습니다.
-- 패키지 bridge profile resource는 local profile로 복사해 수정합니다.
-- 대시보드의 Gateway는 `bus serve`가 현재 열어 둔 inbound endpoint 상태를 표시합니다.
+- 패키지 bridge profile은 로컬 profile로 복사해 수정합니다.
+- 대시보드의 Gateway는 `bus serve`가 현재 열어 둔 수신 주소 상태를 표시합니다.
 
 ```bash
 cp .agent-bus/bridge/profile.template.json .agent-bus/bridge/reviewer.json
@@ -308,7 +287,7 @@ cp "$(agentbus resource path bridge/claude-inbox.json)" .agent-bus/bridge/claude
 
 ## Teammate runners
 
-Runner profile은 어떤 local CLI를 어떤 agent 이름으로 깨울지 정합니다. profile 파일은 `.agent-bus/bridge/<profile>.json`에 둡니다.
+Teammate profile은 어떤 로컬 CLI를 어떤 agent 이름으로 깨울지 정합니다. profile 파일은 `.agent-bus/bridge/<profile>.json`에 둡니다.
 
 ### Codex CLI teammate
 
@@ -336,129 +315,51 @@ agentbus teammate run --profile gemini-runner-inbox
 
 Profile에는 다음 값을 둡니다.
 
-- target agent
-- provider 실행 옵션
+- 대상 agent
+- CLI 실행 옵션
 - 감시 주기
 - timeout 정책
-- profile 소유 runner의 위치 기록
+- 마지막 처리 지점
 
 ## Commands
 
-자주 쓰는 묶음부터 보고, 세부 옵션은 각 명령의 `--help`에서 확인합니다.
+기본 작업은 bus를 열고, Key Context와 메시지를 남기고, task와 teammate 실행을 운영하는 흐름만 알면 시작할 수 있습니다. 운영, 보안, 외부 연동 명령은 필요할 때 따로 확인합니다.
 
-### bus
+### 기본 경로
 
 | 명령 | 용도 |
 | --- | --- |
-| `bus init` | secure capsule channel 생성 |
+| `bus init` | 암호화된 협업 채널 생성 |
 | `bus serve` | localhost 대시보드 실행 |
 | `bus status` | bus 상태와 정지 요청 확인 |
 | `bus stop` | 협력적 정지 요청 기록 |
-| `bus clear` | 현재 세션 기록 정리 |
-| `bus rotate` | 메시지 로그 보관 |
-| `bus archive list/show/restore` | capsule archive 조회와 복구 |
+| `context show/set` | Key Context 확인과 저장 |
+| `message send/delete` | 메시지 전송과 삭제 이벤트 기록 |
+| `task state/list` | 작업 상태 변경과 목록 확인 |
+| `teammate run` | bus 요청을 감시하고 필요한 teammate 실행 |
+
+### 운영 경로
+
+| 명령 | 용도 |
+| --- | --- |
+| `agent create/list/set/inbox/ack/watch/delete` | 직접 수신함을 처리하는 agent 상태 관리 |
+| `task new/delete` | lead나 자동화가 작업 기록을 직접 만들거나 정리 |
+| `ticket new/list/accept/reject` | lead나 operator가 후보 작업을 정리 |
+| `bus monitor` | agent 상태와 활동 정체 확인 |
+| `bus clear/rotate/archive` | 세션 정리와 보관 조회·복구 |
 | `bus security-check` | 로컬 보호장치와 민감 기록 점검 |
-| `bus supervise` | 에이전트 heartbeat와 시간 제한 감독 |
+| `auth init/grant/demo/revoke/list` | agent와 대시보드 viewer 권한 관리 |
+| `skill` | 로컬 스킬 확인과 실제 사용 근거 관리 |
+| `guide loop/workflow` | loop 진입 안내와 상세 workflow reference 출력 |
 
-### agent
-
-| 명령 | 용도 |
-| --- | --- |
-| `agent create` | 표시명으로 내부 agent id 생성 |
-| `agent list` | 에이전트 상태 목록 출력 |
-| `agent set` | 에이전트 heartbeat와 상태 갱신 |
-| `agent delete` | 에이전트 상태 삭제 |
-| `agent inbox` | 에이전트 수신함 읽기 |
-| `agent ack` | 처리한 메시지 확인 표시 |
-| `agent watch` | 미확인 request 감시 |
-
-### teammate
+### 통합 경로
 
 | 명령 | 용도 |
 | --- | --- |
-| `teammate run` | 로컬 CLI teammate loop 실행 |
-
-### context
-
-| 명령 | 용도 |
-| --- | --- |
-| `context show` | 현재 Key Context 출력 |
-| `context set --stdin/--file/--body` | Key Context 저장 |
-
-### auth
-
-| 명령 | 용도 |
-| --- | --- |
-| `auth init` | capsule auth 상태 확인/준비 |
-| `auth grant --agent-id/--agent-name/--viewer [--ttl-seconds <seconds>]` | agent 또는 dashboard viewer token 발급 |
-| `auth demo` | demo viewer token과 demo 전용 restricted 샘플 생성 |
-| `auth revoke --agent-id/--agent-name/--viewer` | agent 또는 dashboard viewer token 폐기 |
-| `auth list` | 원문 열람 권한 목록 출력 |
-
-### message
-
-| 명령 | 용도 |
-| --- | --- |
-| `message send` | 메시지 전송 |
-| `message delete` | 메시지 삭제 이벤트 기록 |
-
-### task
-
-| 명령 | 용도 |
-| --- | --- |
-| `task new` | 작업 생성 |
-| `task state` | 작업 상태 갱신 |
-| `task list` | 작업 목록 출력 |
-| `task delete` | 작업 삭제 이벤트 기록 |
-
-### ticket
-
-| 명령 | 용도 |
-| --- | --- |
-| `ticket new` | 후보 작업 등록 |
-| `ticket list` | 티켓 목록 출력 |
-| `ticket accept` | 티켓을 작업과 request 메시지로 승격 |
-| `ticket reject` | 티켓 반려 |
-
-### skill
-
-| 명령 | 용도 |
-| --- | --- |
-| `skill new` | 로컬 스킬 초안 생성 |
-| `skill list` | 로컬 스킬 목록 출력 |
-| `skill show` | 로컬 `SKILL.md` 출력 |
-| `skill state` | 로컬 스킬 상태 변경 |
-| `skill review` | 처리할 skill 근거와 주의 항목 요약 |
-| `skill evidence` | skill 사용 근거 기록 |
-
-### bridge
-
-| 명령 | 용도 |
-| --- | --- |
-| `bridge events` | bus event 읽기 |
-| `bridge watch` | 새 bus event 감시 |
-| `bridge run` | bridge profile 실행 |
-| `bridge check` | bridge profile 검사 |
-| `bridge status` | bridge 처리 위치와 실패 요약 출력 |
-
-### packet
-
-| 명령 | 용도 |
-| --- | --- |
-| `packet data --protocol aas` | AAS-compatible data packet 생성 또는 검사 |
-| `packet transport --protocol a2a --artifact card` | A2A Agent Card 생성 또는 검사 |
-| `packet transport --protocol a2a --artifact message` | A2A SendMessage request 생성 또는 검사 |
-| `packet send --protocol a2a` | A2A request 전송 |
-| `packet receive --protocol a2a` | A2A request를 bus message로 반영 |
-
-### guide / resource
-
-| 명령 | 용도 |
-| --- | --- |
-| `guide workflow` | 협업 workflow와 종료 보고서 서식 출력 |
-| `guide loop` | loop 시작 절차와 종료 보고 안내 출력 |
-| `resource list` | package resource 목록 출력 |
-| `resource path` | package resource 경로 출력 |
+| `bridge run/check/status` | bridge profile 실행, 검사, 상태 확인 |
+| `bridge events/watch` | 운영·디버그용 bus 활동 확인 |
+| `packet data/transport/send/receive` | 외부 protocol 경계에서 packet 생성, 전송, 수신 |
+| `resource list/path` | package resource 목록과 경로 확인 |
 
 ## Configuration
 
@@ -473,11 +374,11 @@ Profile에는 다음 값을 둡니다.
 | `AGENTBUS_BUS_DIR` | channel 디렉터리 (`--bus-dir`) |
 | `AGENTBUS_A2A_CARDS_DIR` | A2A 테스트 카드 디렉터리 (`--cards-dir`) |
 | `AGENTBUS_ROOT` | 파일 색인 루트 (`bus serve --root`) |
-| `AGENTBUS_ENDPOINT` | daemon API endpoint override |
+| `AGENTBUS_ENDPOINT` | API 연결 주소 재정의 |
 | `AGENTBUS_PORT` | 대시보드 포트 (`bus serve --port`) |
 | `AGENTBUS_MAX_BYTES` | 메시지 로그 자동 회전 임계값, 기본 5 MB, `0`이면 비활성 |
 | `AGENTBUS_ARCHIVE_KEEP` | 유지할 archive 개수, 기본 `0`은 전체 유지 |
-| `AGENTBUS_AGENT_TOKEN` | restricted 원문 열람 권한 token |
+| `AGENTBUS_AGENT_TOKEN` | 원문 보기 권한 token |
 
 ## App prompts
 
@@ -489,21 +390,21 @@ agentbus bus init
 agentbus guide workflow > /tmp/agentbus-workflow.md
 ```
 
-Codex app thread에는 아래 prompt를 넣습니다.
+Codex app thread에는 아래 prompt를 전달합니다.
 
 ```text
 이 thread에서 agent-bus를 사용하세요.
 당신은 codex라는 이름으로 활동할 에이전트입니다.
 Bus 디렉터리: /absolute/path/to/my-project/.agent-bus
 
-`agentbus guide workflow` 또는 설치된 `agent-bus-workflow` skill에서 workflow를 읽으세요.
-다음 명령으로 시작하세요.
+상세 규칙은 `agentbus guide workflow` 출력이나 설치된 `agent-bus-loop` skill의 `references/workflow.md`에서 확인하세요.
+다음 명령으로 시작합니다.
 agentbus bus status --stop-exit-code
 agentbus agent set --name codex --state running --note "joined"
 agentbus agent inbox --name codex
 
-request 메시지를 처리하고, `agentbus message send`로 보고한 뒤 task id가 있으면 task state를 갱신하세요. `teammate run` 밖에서 직접 inbox를 처리했다면 처리한 메시지를 ack하세요.
-lead 역할이면 loop를 닫기 직전 inbox를 다시 확인하고, `agentbus guide workflow`의 구조화된 종료 보고서를 마지막 report로 보낸 뒤 task state는 completed, status는 done으로 설정하세요.
+request 메시지를 처리한 뒤 `agentbus message send`로 보고하고, task id가 있으면 task state를 갱신하세요. `teammate run` 밖에서 직접 inbox를 처리했다면 처리한 메시지를 ack하세요.
+lead 역할이면 loop를 닫기 전에 inbox를 한 번 더 확인하고, `agentbus guide workflow`의 종료 보고 형식에 맞춘 마지막 report를 보낸 뒤 task state는 completed, status는 done으로 설정하세요.
 ```
 
 ### Claude Code
@@ -514,32 +415,32 @@ agentbus bus init
 agentbus guide loop > /tmp/agentbus-loop.md
 ```
 
-Claude 세션에는 아래 prompt를 넣습니다.
+Claude 세션에는 아래 prompt를 전달합니다.
 
 ```text
 이 세션에서 agent-bus를 사용하세요.
 당신은 claude라는 이름으로 활동할 에이전트입니다.
 Bus 디렉터리: /absolute/path/to/my-project/.agent-bus
 
-`/agent-bus-loop` skill이 설치되어 있으면 그 skill로 시작하세요. 텍스트를 직접 읽는 환경에서는 `agentbus guide loop`의 loop text와 `agentbus guide workflow`의 전체 workflow를 확인하세요.
-다음 명령으로 시작하세요.
+`/agent-bus-loop` skill이 설치되어 있으면 그 skill로 시작하세요. 텍스트를 직접 붙여 넣는 환경에서는 `agentbus guide loop` 출력과 `agentbus guide workflow` 출력으로 시작합니다.
+다음 명령으로 시작합니다.
 agentbus bus status --stop-exit-code
 agentbus agent set --name claude --state running --note "joined"
 agentbus agent inbox --name claude
 
-request 메시지를 처리하고, `agentbus message send`로 보고한 뒤 task id가 있으면 task state를 갱신하세요. `teammate run` 밖에서 직접 inbox를 처리했다면 처리한 메시지를 ack하세요.
-lead 역할이면 loop를 닫기 직전 inbox를 다시 확인하고, `agentbus guide workflow`의 구조화된 종료 보고서를 마지막 report로 보낸 뒤 task state는 completed, status는 done으로 설정하세요.
+request 메시지를 처리한 뒤 `agentbus message send`로 보고하고, task id가 있으면 task state를 갱신하세요. `teammate run` 밖에서 직접 inbox를 처리했다면 처리한 메시지를 ack하세요.
+lead 역할이면 loop를 닫기 전에 inbox를 한 번 더 확인하고, `agentbus guide workflow`의 종료 보고 형식에 맞춘 마지막 report를 보낸 뒤 task state는 completed, status는 done으로 설정하세요.
 ```
 
 ## Teammate I/O
 
-- Input: Key Context와 trigger metadata가 포함된 `teammate-cycle.v1` JSON을 stdin으로 전달
-- Output: stdout은 operator log로 남고, bus report는 agent가 `agentbus message send`로 기록
+- Input: Key Context와 요청 정보가 포함된 실행 입력을 stdin으로 전달
+- Output: stdout은 터미널 로그로 남고, bus report는 agent가 `agentbus message send`로 기록
 - Success: agent가 report, task state, status를 남김
 - Continue: 이어갈 일이 있으면 자기 자신에게 제한된 후속 request를 남기거나 lead/user에게 다음 범위를 요청
-- Failure: provider 실패나 bus 기록 없는 cycle은 runner error로 남고, task가 있으면 failed로 기록
-- Timeout: `timeoutSeconds`는 오래 걸리는 cycle을 상태로 드러내는 기준이며 provider process는 계속 기다림
-- Runner entrypoint: `teammate run`이 provider별 고정 진입점(`codex exec`, `claude -p`, `gemini -p`)을 내부에서 사용
+- Failure: CLI 실패나 bus 기록 없는 실행은 실행 오류로 남고, task가 있으면 failed로 기록
+- Timeout: `timeoutSeconds`는 오래 걸리는 실행을 상태로 드러내는 기준이며 실행 중인 CLI는 계속 기다림
+- Runner entrypoint: `teammate run`이 CLI별 고정 진입점(`codex exec`, `claude -p`, `gemini -p`)을 사용
 
 ## Misc
 
@@ -561,7 +462,7 @@ request = a2a.send_message_request(msg)
 
 ### Package contents
 
-- Bridge profile resources: `agentbus/resources/bridge`
+- Bridge profile: `agentbus/resources/bridge`
 - Demo dashboard bus: `agentbus/resources/demo-bus`
 - 수식 렌더링: `vendor/katex`
 - License: MIT

@@ -150,7 +150,7 @@ A2A_CARDS_DIR = _env_path("AGENTBUS_A2A_CARDS_DIR", Path.cwd() / "agent-cards")
 CARDS_DIR = A2A_CARDS_DIR
 DEFAULT_ROOT = _env_path("AGENTBUS_ROOT", Path.cwd())
 DEFAULT_PORT = _env_int("AGENTBUS_PORT", 8765)
-WORKFLOW_PATH = Path(__file__).resolve().parent / "skills" / "agent-bus-workflow" / "SKILL.md"
+WORKFLOW_PATH = Path(__file__).resolve().parent / "skills" / "agent-bus-loop" / "references" / "workflow.md"
 LOOP_PATH = Path(__file__).resolve().parent / "skills" / "agent-bus-loop" / "SKILL.md"
 RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
 
@@ -1536,7 +1536,7 @@ def skill_prompt_summary(bus_dir: Path, limit: int = 12) -> str:
         out.append(f"- {row['skill_id']} state={row['state']}{desc}{tail}")
     if len(rows) > limit:
         out.append(f"- +{len(rows) - limit} more; run `agentbus skill list`.")
-    out.append("Use `agentbus skill show <skill-id>` for the full text and `agentbus skill evidence <skill-id> ...` after a skill-guided work slice reveals reusable evidence.")
+    out.append("Use `agentbus skill show <skill-id>` for the full text. Record skill evidence only after a skill-guided work slice reveals reusable evidence.")
     return "\n".join(out) + "\n"
 
 
@@ -3059,7 +3059,7 @@ def _bridge_agent_prompt(cycle: dict[str, Any]) -> str:
         system.append(_xml_block("trigger-task", trigger["taskId"]))
     if trigger.get("messageId"):
         system.append(_xml_block("trigger-message", trigger["messageId"]))
-    system.append(_xml_block("guide", "If you need the full workflow text, run `agentbus guide loop` or `agentbus guide workflow`."))
+    system.append(_xml_block("guide", "If you need the loop entry text, run `agentbus guide loop`; for detailed workflow rules, run `agentbus guide workflow`."))
     system.append("</agent-bus-system>")
     return BRIDGE_AGENT_PROMPT + "\n\n" + "\n".join(system)
 
@@ -4196,7 +4196,7 @@ def _add_task_new_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--by", required=True, help="기록을 남기는 사용자 또는 에이전트")
     p.add_argument("--assign", default="", help="쉼표 구분 담당 에이전트")
     p.add_argument("--id", default="", help="명시 task_id (생략 시 자동)")
-    p.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="민감도 표시")
+    p.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="보안 단계")
 
 
 def _add_task_state_args(p: argparse.ArgumentParser) -> None:
@@ -4212,7 +4212,7 @@ def _add_task_delete_args(p: argparse.ArgumentParser) -> None:
 
 
 def add_task_group_parsers(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("task", help="작업 생성·상태·목록·삭제")
+    p = sub.add_parser("task", help="작업 기록과 상태 관리")
     task_sub = p.add_subparsers(dest="task_cmd", required=True)
     p_new = task_sub.add_parser("new", help="작업 생성")
     _add_task_new_args(p_new)
@@ -4232,7 +4232,7 @@ def _add_ticket_new_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--by", required=True, help="기록을 남기는 사용자 또는 에이전트")
     p.add_argument("--body", default="", help="티켓 본문")
     p.add_argument("--ref", action="append", help="관련 파일, 메시지, URL 참조. 여러 번 지정 가능")
-    p.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="민감도 표시")
+    p.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="보안 단계")
 
 
 def _add_ticket_list_args(p: argparse.ArgumentParser) -> None:
@@ -4254,7 +4254,7 @@ def _add_ticket_reject_args(p: argparse.ArgumentParser) -> None:
 
 
 def add_ticket_group_parsers(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("ticket", help="티켓 생성·목록·수락·반려")
+    p = sub.add_parser("ticket", help="후보 작업 기록과 검토")
     ticket_sub = p.add_subparsers(dest="ticket_cmd", required=True)
     p_new = ticket_sub.add_parser("new", help="승격 전 티켓 등록")
     _add_ticket_new_args(p_new)
@@ -4269,39 +4269,68 @@ def add_ticket_group_parsers(sub: argparse._SubParsersAction) -> None:
     _add_ticket_reject_args(p_reject)
     p_reject.set_defaults(func=issue_reject)
 
-def supervise(args: argparse.Namespace) -> int:
+def _monitor_agents(status_agents: dict[str, Any], raw_agents: str) -> list[str]:
+    if raw_agents.strip():
+        agents: list[str] = []
+        for ref in [agent.strip() for agent in raw_agents.split(",") if agent.strip()]:
+            agents.append(_find_agent_id(status_agents, ref) or ref)
+        return agents
+    return sorted(str(agent) for agent in status_agents.keys() if str(agent).strip())
+
+
+def _monitor_labels(status_agents: dict[str, Any], agents: list[str]) -> str:
+    return ",".join(_agent_name(status_agents.get(agent), agent) for agent in agents)
+
+
+def monitor(args: argparse.Namespace) -> int:
     ensure_bus(args.bus_dir)
     start = time.time()
-    agents = [a.strip() for a in args.agents.split(",") if a.strip()]
     while True:
         if _capsule_doc_exists(paths(args.bus_dir)["stop"]):
-            print("stop already present")
-            return 0
+            print("stop present")
+            return 2
         data = load_json(paths(args.bus_dir)["status"], {"agents": {}}).get("agents", {})
+        if not isinstance(data, dict):
+            data = {}
+        agents = _monitor_agents(data, args.agents)
+        if not agents:
+            print("no agents")
+            return 1
         now = time.time()
-        states = {a: data.get(a, {}) for a in agents}
+        missing = [agent for agent in agents if agent not in data]
+        if missing:
+            print("missing agents", ",".join(missing))
+            return 1
+        states = {
+            agent: state if isinstance(state := data.get(agent, {}), dict) else {}
+            for agent in agents
+        }
         if states and all(v.get("state") == "done" for v in states.values()):
-            write_stop(args.bus_dir, "bus-supervise", "all_done", agents)
             print("all done")
             return 0
         errors = [a for a, v in states.items() if v.get("state") == "error"]
         if errors:
-            write_stop(args.bus_dir, "bus-supervise", "agent_error", errors)
-            print("agent error", ",".join(errors))
+            print("agent error", _monitor_labels(data, errors))
             return 1
-        if now - start > args.max_minutes * 60:
-            write_stop(args.bus_dir, "bus-supervise", "time_limit", f"{args.max_minutes} minutes")
+        if args.max_minutes > 0 and now - start > args.max_minutes * 60:
             print("time limit")
             return 1
-        if now - start > args.startup_grace_seconds:
-            stale = [
-                a for a, v in states.items()
-                if v.get("heartbeat") and now - float(v.get("heartbeat", 0)) > args.stale_seconds
-            ]
-            if stale:
-                write_stop(args.bus_dir, "bus-supervise", "stale_agent", stale)
-                print("stale", ",".join(stale))
-                return 1
+        stale = []
+        for agent, state in states.items():
+            heartbeat = state.get("heartbeat")
+            if not heartbeat:
+                continue
+            try:
+                if now - float(heartbeat) > args.stale_seconds:
+                    stale.append(agent)
+            except (TypeError, ValueError):
+                stale.append(agent)
+        if stale:
+            print("stale", _monitor_labels(data, stale))
+            return 1
+        if not args.watch:
+            print("ok")
+            return 0
         time.sleep(args.interval_seconds)
 
 
@@ -5051,18 +5080,18 @@ def add_bus_parsers(sub: argparse._SubParsersAction) -> None:
     p_stop.add_argument("--reason", required=True, help="정지 사유 키. 예: user_stop, loop_closed")
     p_stop.add_argument("--detail", default="", help="대시보드와 보고서에 남길 세부 설명")
     p_stop.set_defaults(func=stop)
-    p_clear = bus_sub.add_parser("clear", help="메시지 세션 로그 비우기 (--all: 작업·티켓·상태까지)")
+    p_clear = bus_sub.add_parser("clear", help="세션 기록 정리 (--all: 작업·티켓·상태까지)")
     p_clear.add_argument("--all", action="store_true", help="작업·티켓·상태·정지까지 초기화")
     p_clear.add_argument("--yes", action="store_true", help="확인 없이 진행")
     p_clear.set_defaults(func=clear)
-    p_rotate = bus_sub.add_parser("rotate", help="메시지 로그를 archive/로 회전")
+    p_rotate = bus_sub.add_parser("rotate", help="현재 기록을 archive로 이동")
     p_rotate.set_defaults(func=rotate)
-    p_archive = bus_sub.add_parser("archive", help="capsule archive 조회·복구")
+    p_archive = bus_sub.add_parser("archive", help="archive 조회·복구")
     archive_sub = p_archive.add_subparsers(dest="archive_cmd", required=True)
     p_archive_list = archive_sub.add_parser("list", help="archive 목록 출력")
     p_archive_list.add_argument("--json", action="store_true", help="JSON으로 출력")
     p_archive_list.set_defaults(func=bus_archive_list)
-    p_archive_show = archive_sub.add_parser("show", help="archive 내용을 redacted JSONL로 출력")
+    p_archive_show = archive_sub.add_parser("show", help="archive 내용을 redacted 기록으로 출력")
     p_archive_show.add_argument("archive", help="archive id, stream, 또는 metadata 파일 이름")
     p_archive_show.add_argument("--json", action="store_true", help="metadata와 records를 JSON으로 출력")
     p_archive_show.set_defaults(func=bus_archive_show)
@@ -5072,13 +5101,13 @@ def add_bus_parsers(sub: argparse._SubParsersAction) -> None:
     p_security = bus_sub.add_parser("security-check", help="로컬 보안 가드레일 점검")
     p_security.add_argument("--json", action="store_true", help="점검 결과를 JSON으로 출력")
     p_security.set_defaults(func=security_check)
-    p_supervise = bus_sub.add_parser("supervise", help="감독 루프 (heartbeat·정체·시간 초과 시 정지)")
-    p_supervise.add_argument("--agents", default="my-agent", help="감독할 에이전트 이름 목록(쉼표 구분)")
-    p_supervise.add_argument("--stale-seconds", type=int, default=900, help="heartbeat가 정체로 처리되는 초 단위 기준")
-    p_supervise.add_argument("--startup-grace-seconds", type=int, default=600, help="시작 직후 정체 판정을 미루는 초 단위 유예")
-    p_supervise.add_argument("--max-minutes", type=int, default=120, help="감독 루프 최대 실행 시간(분)")
-    p_supervise.add_argument("--interval-seconds", type=int, default=30, help="상태 확인 주기(초)")
-    p_supervise.set_defaults(func=supervise)
+    p_monitor = bus_sub.add_parser("monitor", help="에이전트 상태와 정체 여부 확인")
+    p_monitor.add_argument("--agents", default="", help="확인할 에이전트 이름 목록(쉼표 구분). 생략하면 전체")
+    p_monitor.add_argument("--stale-seconds", type=int, default=900, help="heartbeat 정체 기준(초)")
+    p_monitor.add_argument("--max-minutes", type=int, default=120, help="watch 최대 실행 시간(분)")
+    p_monitor.add_argument("--interval-seconds", type=int, default=30, help="watch 확인 주기(초)")
+    p_monitor.add_argument("--watch", action="store_true", help="반복 확인")
+    p_monitor.set_defaults(func=monitor)
 
 
 def add_agent_ref(parser: argparse.ArgumentParser, *, create: bool = False) -> None:
@@ -5088,7 +5117,7 @@ def add_agent_ref(parser: argparse.ArgumentParser, *, create: bool = False) -> N
 
 
 def add_agent_parsers(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("agent", help="에이전트 상태·수신함·ack·watch")
+    p = sub.add_parser("agent", help="에이전트 상태·수신함·직접 처리")
     agent_sub = p.add_subparsers(dest="agent_cmd", required=True)
     p_create = agent_sub.add_parser("create", help="표시명으로 에이전트 id 생성")
     p_create.add_argument("--name", required=True, help="대시보드에 표시할 에이전트 이름")
@@ -5111,11 +5140,11 @@ def add_agent_parsers(sub: argparse._SubParsersAction) -> None:
     add_agent_ref(p_inbox)
     p_inbox.add_argument("--limit", type=int, default=50, help="표시할 최대 메시지 수")
     p_inbox.set_defaults(func=inbox)
-    p_ack = agent_sub.add_parser("ack", help="메시지 확인 표시")
+    p_ack = agent_sub.add_parser("ack", help="직접 처리한 메시지 확인 표시")
     add_agent_ref(p_ack)
     p_ack.add_argument("message_id", help="ack할 메시지 id")
     p_ack.set_defaults(func=ack)
-    p_watch = agent_sub.add_parser("watch", help="ack 기준 미확인 메시지 감시")
+    p_watch = agent_sub.add_parser("watch", help="직접 처리할 미확인 메시지 감시")
     add_agent_ref(p_watch)
     p_watch.add_argument("--kinds", default="request,task,ticket,stop", help="쉼표 구분 kind 필터 (기본 request,task,ticket,stop)")
     p_watch.add_argument("--limit", type=int, default=20, help="한 번에 표시할 최대 메시지 수")
@@ -5134,7 +5163,7 @@ def add_teammate_parsers(sub: argparse._SubParsersAction) -> None:
     p_run.add_argument("--id", dest="agent_id", help="프로필 target과 일치해야 하는 에이전트 id")
     p_run.add_argument("--name", dest="agent_name", help="프로필 target과 일치해야 하는 에이전트 표시명")
     p_run.add_argument("--once", action="store_true", help="한 번 확인하고 종료")
-    p_run.add_argument("--dry-run", action="store_true", help="cycle 입력만 출력하고 provider 호출 생략")
+    p_run.add_argument("--dry-run", action="store_true", help="실행 입력만 출력하고 CLI 호출 생략")
     p_run.set_defaults(func=agent_run)
 
 
@@ -5150,7 +5179,7 @@ def add_message_parsers(sub: argparse._SubParsersAction) -> None:
     p_send.add_argument("--ref", action="append", help="관련 파일, 메시지, URL 참조. 여러 번 지정 가능")
     p_send.add_argument("--task", default="", help="연관 task_id (스레딩)")
     p_send.add_argument("--reply-to", dest="reply_to", default="", help="응답 대상 message_id")
-    p_send.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="민감도 표시")
+    p_send.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="보안 단계")
     p_send.set_defaults(func=send)
     p_delete = message_sub.add_parser("delete", help="메시지 삭제 이벤트 기록")
     p_delete.add_argument("--id", required=True, help="삭제 표시할 메시지 id")
@@ -5163,7 +5192,7 @@ def add_auth_parsers(sub: argparse._SubParsersAction) -> None:
     auth_sub = p.add_subparsers(dest="auth_cmd", required=True)
     p_init = auth_sub.add_parser("init", help="capsule auth 상태 확인/준비")
     p_init.set_defaults(func=auth_init)
-    p_grant = auth_sub.add_parser("grant", help="restricted token 발급")
+    p_grant = auth_sub.add_parser("grant", help="원문 보기 token 발급")
     grant_target = p_grant.add_mutually_exclusive_group(required=True)
     grant_target.add_argument("--agent-id", dest="agent_id", help="권한을 부여할 에이전트 id")
     grant_target.add_argument("--agent-name", dest="agent_name", help="권한을 부여할 에이전트 표시명")
@@ -5176,22 +5205,22 @@ def add_auth_parsers(sub: argparse._SubParsersAction) -> None:
     p_demo.add_argument("--no-sample", action="store_true", help="demo-only restricted sample message를 만들지 않음")
     p_demo.add_argument("--json", action="store_true", help="JSON으로 출력")
     p_demo.set_defaults(func=auth_demo)
-    p_revoke = auth_sub.add_parser("revoke", help="restricted token 폐기")
+    p_revoke = auth_sub.add_parser("revoke", help="원문 보기 token 폐기")
     revoke_target = p_revoke.add_mutually_exclusive_group(required=True)
     revoke_target.add_argument("--agent-id", dest="agent_id", help="권한을 폐기할 에이전트 id")
     revoke_target.add_argument("--agent-name", dest="agent_name", help="권한을 폐기할 에이전트 표시명")
     revoke_target.add_argument("--viewer", help="대시보드 원문 보기 권한을 폐기할 사용자 이름")
     p_revoke.set_defaults(func=auth_revoke)
-    p_list = auth_sub.add_parser("list", help="restricted 권한 목록")
+    p_list = auth_sub.add_parser("list", help="원문 보기 권한 목록")
     p_list.add_argument("--json", action="store_true", help="JSON으로 출력")
     p_list.set_defaults(func=auth_list)
 
 
 def add_bridge_parsers(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("bridge", help="event bridge와 runner 연결")
+    p = sub.add_parser("bridge", help="외부 연결 profile 실행·점검")
     bridge_sub = p.add_subparsers(dest="bridge_cmd", required=True)
 
-    p_events = bridge_sub.add_parser("events", help="bus event stream 조회")
+    p_events = bridge_sub.add_parser("events", help="운영·디버그용 bus event 조회")
     p_events.add_argument("--types", default="", help="쉼표 구분 이벤트 타입 필터. ticket.* 허용")
     p_events.add_argument("--target", default="", help="쉼표 구분 대상 필터. all/* 이벤트도 포함")
     p_events.add_argument("--after", default="", help="이 위치 이후 이벤트만 출력")
@@ -5199,13 +5228,13 @@ def add_bridge_parsers(sub: argparse._SubParsersAction) -> None:
     p_events.add_argument("--jsonl", action="store_true", help="JSON Lines로 출력")
     p_events.set_defaults(func=events)
 
-    p_watch = bridge_sub.add_parser("watch", help="bus event stream 감지")
+    p_watch = bridge_sub.add_parser("watch", help="운영·디버그용 bus event 감시")
     p_watch.add_argument("--types", default="", help="쉼표 구분 이벤트 타입 필터. message.*, ticket.* 허용")
     p_watch.add_argument("--target", default="", help="쉼표 구분 대상 필터. all/* 이벤트도 포함")
     p_watch.add_argument("--interval-seconds", type=float, default=1.0, help="반복 감시 주기(초)")
     p_watch.add_argument("--once", action="store_true", help="현재 새 이벤트만 확인하고 종료")
     p_watch.add_argument("--from-start", action="store_true", help="현재 로그의 기존 이벤트부터 출력")
-    p_watch.add_argument("--position-file", dest="position_file", metavar="POSITION_FILE", type=Path, default=None, help="처리 위치 저장 파일")
+    p_watch.add_argument("--position-file", dest="position_file", metavar="POSITION_FILE", type=Path, default=None, help="처리 위치 파일")
     p_watch.add_argument("--dry-run", action="store_true", help="이벤트만 출력하고 처리 위치를 변경하지 않음")
     p_watch.set_defaults(func=watch_events)
 
@@ -5227,7 +5256,7 @@ def add_bridge_parsers(sub: argparse._SubParsersAction) -> None:
 def add_packet_parsers(sub: argparse._SubParsersAction) -> None:
     from .a2a import A2A_ROLES
 
-    p = sub.add_parser("packet", help="외부 protocol packet 교환")
+    p = sub.add_parser("packet", help="외부 protocol 경계의 packet 교환")
     packet_sub = p.add_subparsers(dest="packet_cmd", required=True)
 
     p_data = packet_sub.add_parser("data", help="data packet 생성 또는 검사")
@@ -5239,33 +5268,33 @@ def add_packet_parsers(sub: argparse._SubParsersAction) -> None:
     p_data.add_argument("--event-position", default="", help="이 event position 이후 change event만 포함")
     p_data.add_argument("--include-messages", type=int, default=50, help="최근 communication record 개수")
     p_data.add_argument("--assessment-summary", default="", help="판단 요약 JSON 경로. stdin은 '-'")
-    p_data.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="packet 민감도 표시")
+    p_data.add_argument("--sensitivity", choices=SENSITIVITY_LEVELS, default="", help="packet 보안 단계")
     p_data.add_argument("--out", type=Path, default=None, help="출력 파일. 생략하면 stdout")
     p_data.add_argument("--compact", action="store_true", help="공백 없는 JSON 출력")
     p_data.set_defaults(func=packet_data)
 
-    p_transport = packet_sub.add_parser("transport", help="transport artifact 생성 또는 검사")
-    p_transport.add_argument("--protocol", choices=["a2a"], required=True, help="transport protocol")
-    p_transport.add_argument("--artifact", choices=["card", "message"], default="", help="생성 또는 검사할 artifact")
-    p_transport.add_argument("--file", default="", help="검사할 transport artifact JSON 경로. stdin은 '-'")
-    p_transport.add_argument("--agent", default="", help="card artifact용 카드 idShort 또는 파일명")
+    p_transport = packet_sub.add_parser("transport", help="외부 전송 자료 생성 또는 검사")
+    p_transport.add_argument("--protocol", choices=["a2a"], required=True, help="전송 protocol")
+    p_transport.add_argument("--artifact", choices=["card", "message"], default="", help="생성 또는 검사할 자료")
+    p_transport.add_argument("--file", default="", help="검사할 외부 전송 자료 JSON 경로. stdin은 '-'")
+    p_transport.add_argument("--agent", default="", help="card 자료용 카드 idShort 또는 파일명")
     p_transport.add_argument("--cards-dir", dest="cards_dir", type=Path, default=CARDS_DIR, help="A2A 테스트 카드 JSON 디렉터리")
-    p_transport.add_argument("--url", default="http://127.0.0.1:8765/a2a/rpc", help="transport endpoint URL")
-    p_transport.add_argument("--tenant", default="", help="transport routing value")
-    p_transport.add_argument("--message-id", default="", help="message artifact용 bus message id")
-    p_transport.add_argument("--request-id", default="", help="transport request id. 생략하면 자동")
-    p_transport.add_argument("--role", choices=A2A_ROLES, default="ROLE_USER", help="transport message role")
-    p_transport.add_argument("--context-id", default="", help="transport context id")
-    p_transport.add_argument("--data", action="append", help="추가할 structured JSON part 경로. stdin은 '-'")
+    p_transport.add_argument("--url", default="http://127.0.0.1:8765/a2a/rpc", help="외부 endpoint URL")
+    p_transport.add_argument("--tenant", default="", help="routing 값")
+    p_transport.add_argument("--message-id", default="", help="message 자료용 bus message id")
+    p_transport.add_argument("--request-id", default="", help="request id. 생략하면 자동")
+    p_transport.add_argument("--role", choices=A2A_ROLES, default="ROLE_USER", help="message role")
+    p_transport.add_argument("--context-id", default="", help="context id")
+    p_transport.add_argument("--data", action="append", help="추가 JSON part 경로. stdin은 '-'")
     p_transport.add_argument("--accepted-output", action="append", help="허용할 output MIME. 쉼표 구분 가능")
-    p_transport.add_argument("--wait", action="store_true", help="returnImmediately=false로 생성")
+    p_transport.add_argument("--wait", action="store_true", help="응답을 기다리는 요청으로 생성")
     p_transport.add_argument("--out", type=Path, default=None, help="출력 파일. 생략하면 stdout")
     p_transport.add_argument("--compact", action="store_true", help="공백 없는 JSON 출력")
     p_transport.set_defaults(func=packet_transport)
 
-    p_send = packet_sub.add_parser("send", help="transport artifact 외부 전송")
-    p_send.add_argument("--protocol", choices=["a2a"], required=True, help="transport protocol")
-    p_send.add_argument("--file", required=True, help="transport request JSON 경로. stdin은 '-'")
+    p_send = packet_sub.add_parser("send", help="외부 전송 자료 보내기")
+    p_send.add_argument("--protocol", choices=["a2a"], required=True, help="전송 protocol")
+    p_send.add_argument("--file", required=True, help="전송 요청 JSON 경로. stdin은 '-'")
     p_send.add_argument("--endpoint", required=True, help="HTTP(S) endpoint")
     p_send.add_argument("--token-env", default="", help="Bearer 토큰을 읽을 환경변수 이름")
     p_send.add_argument("--header", action="append", help="추가 HTTP header. 예: 'X-Trace: 1'")
@@ -5277,32 +5306,32 @@ def add_packet_parsers(sub: argparse._SubParsersAction) -> None:
     p_send.add_argument("--response-from", default="a2a", help="응답 기록 메시지의 발신자")
     p_send.set_defaults(func=packet_send)
 
-    p_receive = packet_sub.add_parser("receive", help="transport artifact를 bus 기록으로 반영")
-    p_receive.add_argument("--protocol", choices=["a2a"], required=True, help="transport protocol")
-    p_receive.add_argument("--file", required=True, help="받은 transport request JSON 경로. stdin은 '-'")
+    p_receive = packet_sub.add_parser("receive", help="받은 외부 전송 자료를 bus 기록으로 반영")
+    p_receive.add_argument("--protocol", choices=["a2a"], required=True, help="전송 protocol")
+    p_receive.add_argument("--file", required=True, help="받은 전송 요청 JSON 경로. stdin은 '-'")
     p_receive.add_argument("--to", default="all", help="metadata recipient가 없을 때 받을 대상")
     p_receive.add_argument("--from", dest="sender", default="a2a", help="metadata sender가 없을 때 보낼 주체")
-    p_receive.add_argument("--response", action="store_true", help="수신 결과를 transport response JSON으로 출력")
+    p_receive.add_argument("--response", action="store_true", help="수신 결과를 response JSON으로 출력")
     p_receive.set_defaults(func=packet_receive)
 
 
 def add_guide_parsers(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("guide", help="루프·워크플로 안내 출력")
+    p = sub.add_parser("guide", help="loop와 workflow 안내 출력")
     guide_sub = p.add_subparsers(dest="guide_cmd", required=True)
-    p_workflow = guide_sub.add_parser("workflow", help="에이전트 협업 워크플로와 종료 보고서 template 출력")
-    p_workflow.add_argument("--path", action="store_true", help="패키지에 포함된 SKILL.md 경로만 출력")
+    p_workflow = guide_sub.add_parser("workflow", help="에이전트 협업 workflow reference와 종료 보고 형식 출력")
+    p_workflow.add_argument("--path", action="store_true", help="패키지에 포함된 workflow reference 경로만 출력")
     p_workflow.set_defaults(func=workflow)
-    p_loop = guide_sub.add_parser("loop", help="에이전트 루프 엔트리와 종료 보고 안내 출력")
+    p_loop = guide_sub.add_parser("loop", help="에이전트 loop 진입 안내 출력")
     p_loop.add_argument("--path", action="store_true", help="패키지에 포함된 SKILL.md 경로만 출력")
     p_loop.set_defaults(func=loop)
 
 
 def add_resource_parsers(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("resource", help="package resource 목록 또는 경로 출력")
+    p = sub.add_parser("resource", help="패키지 resource 목록 또는 경로 출력")
     resource_sub = p.add_subparsers(dest="resource_cmd", required=True)
-    p_list = resource_sub.add_parser("list", help="package resource 목록 출력")
+    p_list = resource_sub.add_parser("list", help="패키지 resource 목록 출력")
     p_list.set_defaults(func=resources, name="")
-    p_path = resource_sub.add_parser("path", help="package resource 경로 출력")
+    p_path = resource_sub.add_parser("path", help="패키지 resource 경로 출력")
     p_path.add_argument("name", help="예: bridge/claude-inbox.json")
     p_path.set_defaults(func=resources)
 
@@ -5390,13 +5419,12 @@ def resources(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="agentbus",
-        description="로컬 다중 에이전트 secure capsule channel: 메시지·ack·상태·작업.",
+        description="로컬 다중 에이전트 secure capsule channel: 메시지·상태·작업.",
         epilog=(
             "작업 수명주기: submitted → working → input_required → completed/failed/canceled.\n"
             "에이전트 상태(agent set --state)는 작업과 별개: running/waiting/done/error.\n"
             "스레딩: message send --task <id>, --reply-to <id>.\n"
             "Key Context: context show, context set --stdin.\n"
-            "A2A 테스트 카드: 기본 ./agent-cards/*.json 또는 AGENTBUS_A2A_CARDS_DIR.\n"
             "세부 도움말: agentbus <command> --help."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

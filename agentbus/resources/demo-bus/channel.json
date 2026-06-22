@@ -1,0 +1,8 @@
+{
+  "createdAt": "2026-06-22T09:37:53.290+00:00",
+  "endpoint": "http://127.0.0.1:8791",
+  "id": "ba026bc3863e4a0685ba1866c14747d4",
+  "schemaVersion": "agentbus.capsule.v1",
+  "store": "store/capsule.sqlite",
+  "updatedAt": "2026-06-22T09:38:06.778+00:00"
+}

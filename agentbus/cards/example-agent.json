@@ -7,8 +7,7 @@
   "semanticId": "urn:agent-bus:agent-card",
   "url": "file://.agent-bus",
   "capabilities": {
-    "streaming": false,
-    "stateTransport": "file-bus"
+    "streaming": false
   },
   "skills": [
     {

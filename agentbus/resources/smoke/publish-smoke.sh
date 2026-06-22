@@ -36,12 +36,12 @@ fi
 
 ab guide loop > "$TMP/guide-loop.md"
 grep -q '^# agent-bus loop$' "$TMP/guide-loop.md"
-grep -q 'Loop closure report' "$TMP/guide-loop.md"
+grep -q 'Stop or close' "$TMP/guide-loop.md"
 LOOP_SKILL=$(ab guide loop --path)
 [ -f "$LOOP_SKILL" ]
-grep -q 'agent-bus-workflow' "$LOOP_SKILL"
+grep -q 'references/workflow.md' "$LOOP_SKILL"
 ab guide workflow > "$TMP/guide-workflow.md"
-grep -q '^# agent-bus workflow$' "$TMP/guide-workflow.md"
+grep -q '^# agent-bus workflow reference$' "$TMP/guide-workflow.md"
 grep -q 'Termination report' "$TMP/guide-workflow.md"
 WORKFLOW_SKILL=$(ab guide workflow --path)
 [ -f "$WORKFLOW_SKILL" ]
@@ -68,7 +68,8 @@ ab resource list | grep -q '^bridge/openai-compatible-messages.json$'
 ab resource list | grep -q '^bridge/openai-compatible-tasks.json$'
 ab resource list | grep -q '^bridge/openai-compatible-tickets.json$'
 ab resource list | grep -q '^demo-bus/dashboard-demo.png$'
-ab resource list | grep -q '^demo-bus/key_context.json$'
+ab resource list | grep -q '^demo-bus/channel.json$'
+ab resource list | grep -q '^demo-bus/store/capsule.sqlite$'
 ab resource list | grep -q '^demo-bus/bridge/demo-monitor.json$'
 ab resource list | grep -q '^demo-bus/bridge/demo-a2a-outbound.json$'
 ab resource list | grep -q '^demo-bus/skills/loop-closure-report/SKILL.md$'
@@ -80,7 +81,9 @@ fi
 DEMO_SRC=$(ab resource path demo-bus)
 DEMO_BUS="$TMP/demo-bus"
 cp -R "$DEMO_SRC" "$DEMO_BUS"
-ab --bus-dir "$DEMO_BUS" bus migrate --from "$DEMO_BUS" >/dev/null
+if [ -f "$DEMO_BUS/messages.jsonl" ]; then
+  ab --bus-dir "$DEMO_BUS" bus migrate --from "$DEMO_BUS" >/dev/null
+fi
 ab --bus-dir "$DEMO_BUS" task list > "$TMP/demo-tasks.txt"
 ab --bus-dir "$DEMO_BUS" ticket list --json > "$TMP/demo-tickets.json"
 ab --bus-dir "$DEMO_BUS" context show > "$TMP/demo-context.txt"
@@ -89,7 +92,7 @@ ab --bus-dir "$DEMO_BUS" auth demo --json > "$TMP/demo-auth.json"
 ab --bus-dir "$DEMO_BUS" skill list | grep -q '^loop-closure-report'
 ab --bus-dir "$DEMO_BUS" skill list | grep -q '^demo-showcase-review'
 grep -q "t-demo-lead" "$TMP/demo-tasks.txt"
-grep -q "demo bus" "$TMP/demo-context.txt"
+grep -q "demo-bus" "$TMP/demo-context.txt"
 "$PYTHON" - "$TMP/demo-bridge-status.json" <<'PY'
 import json, sys
 rows = json.load(open(sys.argv[1]))["bridges"]
@@ -130,6 +133,50 @@ ab bus init >/dev/null
 ab auth init >/dev/null
 REVIEWER_ID=$(ab agent create --name reviewer)
 case "$REVIEWER_ID" in a-*) ;; *) echo "bad agent id: $REVIEWER_ID" >&2; exit 1;; esac
+MONITOR_EMPTY="$TMP/monitor-empty"
+ab --bus-dir "$MONITOR_EMPTY" bus init >/dev/null
+if ab --bus-dir "$MONITOR_EMPTY" bus monitor >"$TMP/monitor-empty.out" 2>&1; then
+  echo "empty monitor should fail" >&2
+  exit 1
+fi
+grep -q '^no agents$' "$TMP/monitor-empty.out"
+ab bus monitor --agents reviewer | grep -q '^ok$'
+"$PYTHON" - "$AGENTBUS_BUS_DIR" "$REVIEWER_ID" <<'PY'
+import sys, time
+from pathlib import Path
+from agentbus import bus
+bd = Path(sys.argv[1])
+aid = sys.argv[2]
+ps = bus.paths(bd)
+status = bus.load_json(ps["status"], {"agents": {}})
+status["agents"][aid]["heartbeat"] = time.time() - 9999
+bus.write_json(ps["status"], status)
+PY
+if ab bus monitor --agents reviewer --stale-seconds 1 >"$TMP/monitor-stale.out" 2>&1; then
+  echo "stale monitor should fail" >&2
+  exit 1
+fi
+grep -q '^stale reviewer$' "$TMP/monitor-stale.out"
+"$PYTHON" - "$AGENTBUS_BUS_DIR" <<'PY'
+import sys
+from pathlib import Path
+from agentbus import bus
+bd = Path(sys.argv[1])
+assert not bus._capsule_doc_exists(bus.paths(bd)["stop"])
+PY
+ab agent set --id "$REVIEWER_ID" --state done --note "monitor smoke" >/dev/null
+ab bus monitor --agents reviewer | grep -q '^all done$'
+ab agent set --id "$REVIEWER_ID" --state waiting --note "ready" >/dev/null
+MONITOR_STOP="$TMP/monitor-stop"
+ab --bus-dir "$MONITOR_STOP" bus init >/dev/null
+ab --bus-dir "$MONITOR_STOP" agent create --name stopped >/dev/null
+ab --bus-dir "$MONITOR_STOP" bus stop --by smoke --reason loop_closed --detail "monitor smoke" >/dev/null
+set +e
+ab --bus-dir "$MONITOR_STOP" bus monitor >"$TMP/monitor-stop.out" 2>&1
+MONITOR_STOP_RC=$?
+set -e
+[ "$MONITOR_STOP_RC" -eq 2 ]
+grep -q '^stop present$' "$TMP/monitor-stop.out"
 ab auth grant --agent-name reviewer --ttl-seconds 3600 >/dev/null
 ab auth list > "$TMP/auth-list.txt"
 ab auth list --json > "$TMP/auth-list.json"
@@ -808,12 +855,9 @@ required = {
     'agentbus/resources/bridge/openai-compatible-tasks.json',
     'agentbus/resources/bridge/openai-compatible-tickets.json',
     'agentbus/resources/demo-bus/README.md',
+    'agentbus/resources/demo-bus/channel.json',
     'agentbus/resources/demo-bus/dashboard-demo.png',
-    'agentbus/resources/demo-bus/messages.jsonl',
-    'agentbus/resources/demo-bus/tasks.jsonl',
-    'agentbus/resources/demo-bus/issues.jsonl',
-    'agentbus/resources/demo-bus/status.json',
-    'agentbus/resources/demo-bus/key_context.json',
+    'agentbus/resources/demo-bus/store/capsule.sqlite',
     'agentbus/resources/demo-bus/bridge/codex-ui-runner.json',
     'agentbus/resources/demo-bus/bridge/codex-docs-runner.json',
     'agentbus/resources/demo-bus/bridge/codex-policy-runner.json',
@@ -834,7 +878,7 @@ required = {
     'agentbus/schemas/bridge-handlers.v1.md',
     'agentbus/schemas/events.v1.md',
     'agentbus/skills/agent-bus-loop/SKILL.md',
-    'agentbus/skills/agent-bus-workflow/SKILL.md',
+    'agentbus/skills/agent-bus-loop/references/workflow.md',
     'agentbus/skills/lead-strategic-approach/SKILL.md',
     'agentbus/static/dashboard.js',
     'agentbus/vendor/katex/katex.min.js',
